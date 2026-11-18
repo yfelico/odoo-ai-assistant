@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Asistente Odoo</title>
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --text: #1d2330;
+      --muted: #667085;
+      --accent: #714b67;
+      --user: #ece6eb;
+      --border: #d9dde3;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #14161b;
+        --panel: #1d2027;
+        --text: #e7e9ee;
+        --muted: #9aa1ad;
+        --accent: #c79bbd;
+        --user: #2e2630;
+        --border: #333844;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    main {
+      max-width: 760px;
+      margin: 0 auto;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      padding: 16px;
+    }
+    h1 { font-size: 1.15rem; margin: 0 0 12px; color: var(--accent); }
+    #log { flex: 1; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+    .msg {
+      padding: 10px 14px;
+      border-radius: 10px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    .msg.user { background: var(--user); align-self: flex-end; max-width: 85%; }
+    .msg.error { border-color: #d92d20; }
+    .tools { margin-top: 8px; font-size: 0.85rem; color: var(--muted); }
+    .tools code { font-family: ui-monospace, Consolas, monospace; }
+    form { display: flex; gap: 8px; margin-top: 12px; }
+    textarea {
+      flex: 1;
+      resize: vertical;
+      min-height: 44px;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+      font: inherit;
+    }
+    button {
+      padding: 0 18px;
+      border: 0;
+      border-radius: 8px;
+      background: var(--accent);
+      color: #fff;
+      font: inherit;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.6; cursor: wait; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Asistente de IA para Odoo</h1>
+    <div id="log" aria-live="polite"></div>
+    <form id="chat-form">
+      <label for="message" hidden>Mensaje</label>
+      <textarea id="message" name="message" maxlength="4000" required
+        placeholder="Ej.: ¿Qué productos están por debajo del stock mínimo?"></textarea>
+      <button id="send" type="submit">Enviar</button>
+    </form>
+  </main>
+  <script>
+    "use strict";
+    const log = document.getElementById("log");
+    const form = document.getElementById("chat-form");
+    const input = document.getElementById("message");
+    const send = document.getElementById("send");
+    let conversationId = null;
+
+    // textContent only: answers and tool arguments are never rendered as HTML.
+    function addMessage(text, kind, toolCalls) {
+      const item = document.createElement("div");
+      item.className = "msg " + kind;
+      item.textContent = text;
+      if (toolCalls && toolCalls.length > 0) {
+        const tools = document.createElement("div");
+        tools.className = "tools";
+        tools.textContent = "Herramientas: ";
+        toolCalls.forEach((call, index) => {
+          const code = document.createElement("code");
+          code.textContent = call.name + " " + JSON.stringify(call.arguments);
+          if (index > 0) tools.append(", ");
+          tools.append(code);
+        });
+        item.append(tools);
+      }
+      log.append(item);
+      item.scrollIntoView({ behavior: "smooth", block: "end" });
+    }
+
+    async function ask(message) {
+      const response = await fetch("/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: message, conversation_id: conversationId }),
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(typeof body.detail === "string" ? body.detail : "Error " + response.status);
+      }
+      return body;
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const message = input.value.trim();
+      if (!message) return;
+      addMessage(message, "user");
+      input.value = "";
+      send.disabled = true;
+      try {
+        const body = await ask(message);
+        conversationId = body.conversation_id;
+        addMessage(body.answer, "assistant", body.tool_calls);
+      } catch (error) {
+        addMessage(error.message, "error");
+      } finally {
+        send.disabled = false;
+        input.focus();
+      }
+    });
+
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        form.requestSubmit();
+      }
+    });
+  </script>
+</body>
+</html>

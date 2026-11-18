@@ -74,8 +74,9 @@ Los borradores se guardan en memoria del proceso (un diccionario con caducidad) 
 | `POST /chat` | `{"message": str, "conversation_id": str \| null}` | `{"conversation_id": str, "answer": str, "pending_draft": {...} \| null, "tool_calls": [...]}` |
 | `POST /confirm` | `{"draft_id": str}` | `{"quotation_id": int, "name": str}` |
 | `GET /health` | | `{"status": "ok", "odoo": "ok" \| "unreachable"}` |
+| `GET /` | | Chat web mínimo (HTML) |
 
-`tool_calls` en la respuesta lista las herramientas usadas con sus argumentos, para mostrar en la interfaz qué hizo el agente.
+`tool_calls` en la respuesta lista las herramientas usadas con sus argumentos (`[{"name": str, "arguments": {...}}]`), para mostrar en la interfaz qué hizo el agente. El historial de cada `conversation_id` se guarda en memoria del proceso y caduca tras `CONVERSATION_TTL_SECONDS` sin actividad. Si el modelo falla, `POST /chat` responde 503.
 
 ## 6. Seguridad y guardarraíles
 
@@ -117,6 +118,7 @@ odoo-ai-assistant/
 │   │   ├── fake_erp.py
 │   │   └── fake_llm.py      # respuestas guionadas para pruebas
 │   ├── api/routes.py
+│   ├── web/index.html       # chat mínimo servido en GET /
 │   ├── config.py            # pydantic-settings, lee .env
 │   └── main.py
 ├── odoo_addons/

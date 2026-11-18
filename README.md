@@ -7,7 +7,7 @@ AI agent that answers business questions over Odoo 18 and drafts quotations with
 Requirements: Docker with Compose, [uv](https://docs.astral.sh/uv/) and Git Bash (on Windows).
 
 ```bash
-cp .env.example .env          # set POSTGRES_PASSWORD
+cp .env.example .env          # set POSTGRES_PASSWORD and LLM_API_KEY
 docker compose up -d          # Odoo (http://localhost:8069), PostgreSQL and the API (http://localhost:8000)
 ./scripts/init_odoo.sh        # once: creates the "demo" database and the technical user + API key
 curl http://localhost:8000/health
@@ -15,13 +15,22 @@ curl http://localhost:8000/health
 
 `init_odoo.sh` writes `ODOO_API_KEY` into `.env`. Running it again rotates the key.
 
+Open http://localhost:8000/ to chat with the assistant, or call the API directly:
+
+```bash
+curl -X POST http://localhost:8000/chat -H "Content-Type: application/json"   -d '{"message": "¿Qué productos están por debajo del stock mínimo?"}'
+```
+
+The model is any [LiteLLM](https://docs.litellm.ai/docs/providers) model string in `LLM_MODEL` (default: Gemini), with the provider key in `LLM_API_KEY`. A free Gemini key is available from Google AI Studio. After changing `.env`, recreate the API container: `docker compose up -d --force-recreate api`.
+
 If port 8069 is already taken (e.g. by another Odoo), set `ODOO_PORT` and `ODOO_URL` in `.env`, for example `ODOO_PORT=8018` and `ODOO_URL=http://localhost:8018`. Inside Docker the API always reaches Odoo at `http://odoo:8069`.
 
 ## Known limitations
 
 - The technical user relies on standard Odoo groups (Sales: all documents, Inventory: user, Accounting: read-only). They grant read access to everything the agent needs but still allow some writes.
 - Sales amounts are the orders' untaxed totals, which match the company currency only in single-currency databases such as the demo.
-- Sales periods are UTC calendar days with an inclusive end date.
+- Sales periods are UTC calendar days with an inclusive end date. "Today" (for overdue invoices and relative periods) is also the UTC date.
+- Conversation histories live in the API process memory: they are lost on restart and not shared between workers.
 
 ## Development
 
@@ -30,6 +39,7 @@ uv sync
 uv run fastapi dev app/main.py                     # API outside Docker
 uv run pytest -m "not integration and not evals"   # fast tests
 uv run pytest -m integration                       # requires Odoo running
+uv run pytest -m evals                             # requires Odoo and LLM_API_KEY; calls the real model
 uv run ruff check . --fix && uv run ruff format .
 uv run mypy app
 ```
