@@ -1,0 +1,45 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: odoo
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U odoo -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  odoo:
+    image: odoo:18
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      HOST: db
+      USER: odoo
+      PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    command: ["odoo", "--db-filter=^demo$"]
+    ports:
+      # Host port is configurable in case 8069 is taken by another Odoo.
+      - "${ODOO_PORT:-8069}:8069"
+    volumes:
+      - odoo-data:/var/lib/odoo
+
+  api:
+    build: .
+    depends_on:
+      - odoo
+    env_file: .env
+    environment:
+      # Inside the compose network Odoo is reached by service name.
+      ODOO_URL: http://odoo:8069
+    ports:
+      - "8000:8000"
+
+volumes:
+  db-data:
+  odoo-data:

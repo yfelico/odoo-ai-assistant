@@ -1,0 +1,49 @@
+[project]
+name = "odoo-ai-assistant"
+version = "0.1.0"
+description = "AI agent that answers business questions over Odoo 18 and drafts quotations with human confirmation."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi[standard]>=0.115",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.13",
+    "pytest>=8.3",
+    "ruff>=0.8",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--strict-markers"
+pythonpath = ["."]
+markers = [
+    "integration: requires a running Odoo (docker compose up + scripts/init_odoo.sh)",
+    "evals: end-to-end evals, require Odoo and an LLM key",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+# Mirrors Sonar's Python rules where ruff has an equivalent.
+select = ["E", "F", "W", "I", "B", "C90", "N", "UP", "S", "SIM", "RET", "PL", "PT", "ERA"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "PLR2004"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
