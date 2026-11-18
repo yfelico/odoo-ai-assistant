@@ -63,7 +63,7 @@ Cada herramienta es una operación de negocio con parámetros validados por un m
 | `overdue_invoices` | `partner_id: int \| None = None` | número, cliente (entidad comercial), fecha de vencimiento, saldo pendiente y total, más el número de facturas y la suma de saldos; vencida = fecha de vencimiento anterior a hoy (UTC); el filtro por cliente incluye sus contactos (`child_of`) | `account.move` (`out_invoice`, `posted`, `payment_state` `not_paid` o `partial`) | Lectura |
 | `get_sale_order` | `name: str` (ej. `S00023`, sin distinguir mayúsculas) | cabecera y líneas de producto del pedido (sin secciones ni notas) | `sale.order`, `sale.order.line` | Lectura |
 | `prepare_quotation` | `partner_id: int`, `lines: list[{product_id: int, quantity: float > 0}]` (1 a 50 líneas) | `draft_id`, resumen legible y total estimado; **no escribe en Odoo** | Solo lectura de precios | Preparación |
-| `create_quotation` | `draft_id: str` | id y nombre del presupuesto creado | `sale.order` | Escritura: **solo desde `POST /confirm`, nunca disponible para el LLM** |
+| `create_quotation` | `draft_id: str` | id, nombre y totales del presupuesto creado; Odoo calcula precios e impuestos | `sale.order` (`create` y `message_post`) | Escritura: **solo desde `POST /confirm`, nunca disponible para el LLM** |
 
 Los borradores se guardan en memoria del proceso (un diccionario con caducidad) en el MVP. Un borrador caducado o desconocido devuelve un error claro.
 
@@ -129,6 +129,7 @@ odoo-ai-assistant/
 ├── tests/
 │   ├── contract/            # contrato de ERPGateway (FakeERP y Odoo)
 │   ├── unit/
+│   ├── odoo_rpc.py          # XML-RPC directo para inspeccionar y limpiar Odoo en pruebas
 │   ├── integration/
 │   └── evals/
 ├── Dockerfile               # imagen de la API

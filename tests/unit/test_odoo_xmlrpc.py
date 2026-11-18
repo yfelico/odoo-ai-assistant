@@ -6,6 +6,7 @@ import pytest
 
 from app.adapters.odoo_xmlrpc import OdooXmlRpcGateway
 from app.domain.models import (
+    CreatedQuotation,
     ERPAuthenticationError,
     ERPError,
     ERPUnavailableError,
@@ -13,6 +14,7 @@ from app.domain.models import (
     OverdueInvoice,
     Partner,
     Product,
+    QuotationLine,
     SaleOrderDetail,
     SaleOrderLine,
     SalesGroup,
@@ -79,7 +81,10 @@ class FakeOdooServer:
             raise self.execute_error
         assert (db, uid, password) == (DB, UID, API_KEY)
         self.calls.append(ExecuteCall(model, method, args, kwargs or {}))
-        return self.replies.pop(0)
+        reply = self.replies.pop(0)
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
 
     def _maybe_fail(self) -> None:
         if self.error is not None:
@@ -502,3 +507,100 @@ def test_get_sale_order_escapes_like_wildcards(
 
     assert gateway.get_sale_order(r"S%_\1") is None
     assert server.calls[0].args == [[["name", "=ilike", r"S\%\_\\1"]]]
+
+
+def test_get_partner_reads_by_id(gateway: OdooXmlRpcGateway, server: FakeOdooServer) -> None:
+    server.replies = [[{"id": 15, "name": "Azure Interior", "email": False, "city": "Fremont"}]]
+
+    assert gateway.get_partner(15) == Partner(
+        id=15, name="Azure Interior", email=None, city="Fremont"
+    )
+    assert server.calls == [
+        ExecuteCall(
+            model="res.partner",
+            method="search_read",
+            args=[[["id", "=", 15]]],
+            kwargs={"fields": ["id", "name", "email", "city"], "limit": 1},
+        )
+    ]
+
+
+def test_get_partner_unknown_returns_none(
+    gateway: OdooXmlRpcGateway, server: FakeOdooServer
+) -> None:
+    server.replies = [[]]
+
+    assert gateway.get_partner(999) is None
+
+
+def test_get_products_reads_saleable_products_by_id(
+    gateway: OdooXmlRpcGateway, server: FakeOdooServer
+) -> None:
+    server.replies = [[]]
+
+    assert gateway.get_products([5, 6]) == []
+    assert server.calls == [
+        ExecuteCall(
+            model="product.product",
+            method="search_read",
+            args=[[["id", "in", [5, 6]], ["sale_ok", "=", True]]],
+            kwargs={"fields": ["id", "display_name", "default_code", "lst_price", "uom_id"]},
+        )
+    ]
+
+
+QUOTATION_LINE = QuotationLine(
+    product_id=5, product_name="Office Chair", quantity=10.0, price_unit=70.0, subtotal=700.0
+)
+CREATED_ROW = {"id": 42, "name": "S00042", "amount_untaxed": 700.0, "amount_total": 805.0}
+
+
+def test_create_quotation_creates_the_order_logs_a_note_and_reads_totals(
+    gateway: OdooXmlRpcGateway, server: FakeOdooServer
+) -> None:
+    server.replies = [42, 101, [CREATED_ROW]]
+
+    created = gateway.create_quotation(15, (QUOTATION_LINE,), "Created by the assistant")
+
+    assert created == CreatedQuotation(
+        id=42, name="S00042", amount_untaxed=700.0, amount_total=805.0
+    )
+    assert server.calls == [
+        ExecuteCall(
+            model="sale.order",
+            method="create",
+            args=[
+                {
+                    "partner_id": 15,
+                    "order_line": [[0, 0, {"product_id": 5, "product_uom_qty": 10.0}]],
+                }
+            ],
+            kwargs={},
+        ),
+        ExecuteCall(
+            model="sale.order",
+            method="message_post",
+            args=[[42]],
+            kwargs={
+                "body": "Created by the assistant",
+                "message_type": "comment",
+                "subtype_xmlid": "mail.mt_note",
+            },
+        ),
+        ExecuteCall(
+            model="sale.order",
+            method="search_read",
+            args=[[["id", "=", 42]]],
+            kwargs={"fields": ["id", "name", "amount_untaxed", "amount_total"], "limit": 1},
+        ),
+    ]
+
+
+def test_create_quotation_still_returns_the_order_when_the_note_fails(
+    gateway: OdooXmlRpcGateway, server: FakeOdooServer
+) -> None:
+    server.replies = [42, xmlrpc.client.Fault(2, "denied"), [CREATED_ROW]]
+
+    created = gateway.create_quotation(15, (QUOTATION_LINE,), "Created by the assistant")
+
+    assert created.id == 42

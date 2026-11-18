@@ -1,16 +1,18 @@
 """Ports the application depends on. Adapters in app/adapters implement them."""
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from datetime import date
 from typing import Protocol
 
 from app.domain.models import (
     ChatMessage,
+    CreatedQuotation,
     GroupBy,
     LowStockItem,
     OverdueInvoice,
     Partner,
     Product,
+    QuotationLine,
     SaleOrderDetail,
     SalesSummary,
     ToolSpec,
@@ -24,8 +26,16 @@ class ERPGateway(Protocol):
         """Partners whose name contains ``name`` (case-insensitive)."""
         ...
 
+    def get_partner(self, partner_id: int) -> Partner | None:
+        """The partner with that id, if it exists."""
+        ...
+
     def search_products(self, name: str, limit: int) -> list[Product]:
         """Saleable products whose name or internal reference contains ``name``."""
+        ...
+
+    def get_products(self, product_ids: Iterable[int]) -> list[Product]:
+        """The saleable products among ``product_ids``; unknown ids are left out."""
         ...
 
     def sales_summary(
@@ -51,6 +61,15 @@ class ERPGateway(Protocol):
 
     def get_sale_order(self, name: str) -> SaleOrderDetail | None:
         """The order with that exact name (case-insensitive) and its product lines."""
+        ...
+
+    def create_quotation(
+        self, partner_id: int, lines: Sequence[QuotationLine], note: str
+    ) -> CreatedQuotation:
+        """Create a draft sale order priced by the ERP and log ``note`` on it.
+
+        Only called after the user confirms a draft; the agent never reaches it.
+        """
         ...
 
     def ping(self) -> bool:

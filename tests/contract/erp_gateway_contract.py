@@ -15,6 +15,7 @@ from app.domain.ports import ERPGateway
 EMPTY_PERIOD = (date(1990, 1, 1), date(1990, 1, 31))
 NO_MATCH_QUERY = "zzz-no-such-partner-zzz"
 LARGE_LIMIT = 1000
+UNKNOWN_ID = 999_999_999
 
 
 class ERPGatewayContract:
@@ -148,3 +149,18 @@ class ERPGatewayContract:
 
     def test_get_sale_order_unknown_returns_none(self, gateway: ERPGateway) -> None:
         assert gateway.get_sale_order("ZZZ-NO-SUCH-ORDER") is None
+
+    def test_get_partner_returns_the_partner_found_by_search(self, gateway: ERPGateway) -> None:
+        partner = gateway.search_partners(self.partner_query, limit=1)[0]
+
+        assert gateway.get_partner(partner.id) == partner
+
+    def test_get_partner_unknown_returns_none(self, gateway: ERPGateway) -> None:
+        assert gateway.get_partner(UNKNOWN_ID) is None
+
+    def test_get_products_returns_saleable_products_by_id(self, gateway: ERPGateway) -> None:
+        products = gateway.search_products(self.product_query, limit=3)
+
+        found = gateway.get_products([p.id for p in products] + [UNKNOWN_ID])
+
+        assert sorted(found, key=lambda p: p.id) == sorted(products, key=lambda p: p.id)

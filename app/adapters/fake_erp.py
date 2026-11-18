@@ -1,16 +1,18 @@
 """In-memory ERPGateway for tests."""
 
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 
 from app.domain.models import (
+    CreatedQuotation,
     GroupBy,
     LowStockItem,
     OverdueInvoice,
     Partner,
     Product,
+    QuotationLine,
     SaleOrderDetail,
     SaleOrderLine,
     SalesGroup,
@@ -18,6 +20,7 @@ from app.domain.models import (
 )
 
 CONFIRMED = "sale"
+FIRST_QUOTATION_ID = 1000
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,6 +59,13 @@ class FakeInvoice:
     payment_state: str = "not_paid"
 
 
+@dataclass(frozen=True, slots=True)
+class FakeCreatedQuotation:
+    partner_id: int
+    lines: tuple[QuotationLine, ...]
+    note: str
+
+
 @dataclass
 class _Bucket:
     name: str = ""
@@ -85,10 +95,32 @@ class FakeERP:
         self._orderpoints = list(orderpoints)
         self._invoices = list(invoices)
         self._reachable = reachable
+        self.created_quotations: list[FakeCreatedQuotation] = []
 
     def search_partners(self, name: str, limit: int) -> list[Partner]:
         needle = name.lower()
         return [p for p in self._partners if needle in p.name.lower()][:limit]
+
+    def get_partner(self, partner_id: int) -> Partner | None:
+        return next((p for p in self._partners if p.id == partner_id), None)
+
+    def get_products(self, product_ids: Iterable[int]) -> list[Product]:
+        wanted = set(product_ids)
+        return [p for p in self._products if p.id in wanted]
+
+    def create_quotation(
+        self, partner_id: int, lines: Sequence[QuotationLine], note: str
+    ) -> CreatedQuotation:
+        self.created_quotations.append(FakeCreatedQuotation(partner_id, tuple(lines), note))
+        prices = {p.id: p.list_price for p in self._products}
+        untaxed = sum(line.quantity * prices.get(line.product_id, 0.0) for line in lines)
+        quotation_id = FIRST_QUOTATION_ID + len(self.created_quotations)
+        return CreatedQuotation(
+            id=quotation_id,
+            name=f"S{quotation_id:05d}",
+            amount_untaxed=untaxed,
+            amount_total=untaxed,
+        )
 
     def search_products(self, name: str, limit: int) -> list[Product]:
         needle = name.lower()

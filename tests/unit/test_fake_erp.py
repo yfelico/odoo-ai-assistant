@@ -3,6 +3,7 @@ from datetime import date, datetime
 import pytest
 
 from app.adapters.fake_erp import (
+    FakeCreatedQuotation,
     FakeERP,
     FakeInvoice,
     FakeOrderLine,
@@ -10,10 +11,12 @@ from app.adapters.fake_erp import (
     FakeSaleOrder,
 )
 from app.domain.models import (
+    CreatedQuotation,
     LowStockItem,
     OverdueInvoice,
     Partner,
     Product,
+    QuotationLine,
     SaleOrderDetail,
     SaleOrderLine,
 )
@@ -223,3 +226,19 @@ def test_get_sale_order_details(erp: FakeERP) -> None:
             ),
         ),
     )
+
+
+def test_create_quotation_records_the_request_and_prices_at_list_price(erp: FakeERP) -> None:
+    line = QuotationLine(
+        product_id=10, product_name="Office Chair", quantity=2.0, price_unit=1.0, subtotal=2.0
+    )
+
+    created = erp.create_quotation(ACME.id, (line,), "note")
+
+    assert erp.created_quotations == [
+        FakeCreatedQuotation(partner_id=ACME.id, lines=(line,), note="note")
+    ]
+    assert created == CreatedQuotation(
+        id=created.id, name=created.name, amount_untaxed=240.0, amount_total=240.0
+    )
+    assert created.name.startswith("S")

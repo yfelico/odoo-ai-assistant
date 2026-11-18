@@ -92,6 +92,36 @@ class SaleOrderDetail:
 
 
 @dataclass(frozen=True, slots=True)
+class QuotationLine:
+    """A product line of a quotation draft, priced at the product's list price."""
+
+    product_id: int
+    product_name: str
+    quantity: float
+    price_unit: float
+    subtotal: float
+
+
+@dataclass(frozen=True, slots=True)
+class QuotationDraft:
+    """A quotation prepared by the agent and waiting for the user's confirmation."""
+
+    id: str
+    partner_id: int
+    partner_name: str
+    lines: tuple[QuotationLine, ...]
+    estimated_total_untaxed: float
+
+
+@dataclass(frozen=True, slots=True)
+class CreatedQuotation:
+    id: int
+    name: str
+    amount_untaxed: float
+    amount_total: float
+
+
+@dataclass(frozen=True, slots=True)
 class ToolCall:
     """A tool invocation requested by the model; ``arguments`` is raw JSON text."""
 

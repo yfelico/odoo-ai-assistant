@@ -10,6 +10,8 @@ import secrets
 
 LOGIN = os.environ.get("ODOO_TECH_LOGIN", "ai_assistant")
 KEY_NAME = "ai-assistant"
+# Odoo needs an author email to post chatter notes; example.com is reserved for examples.
+EMAIL = "ai-assistant@example.com"
 # Least privilege available with standard groups: read all sales orders,
 # stock and invoices. These groups still allow some writes (see README).
 GROUP_XMLIDS = (
@@ -24,12 +26,13 @@ group_ids = [env.ref(xmlid).id for xmlid in GROUP_XMLIDS]
 users = env["res.users"].with_context(no_reset_password=True)
 user = users.search([("login", "=", LOGIN)], limit=1)
 if user:
-    user.write({"groups_id": [(6, 0, group_ids)]})
+    user.write({"groups_id": [(6, 0, group_ids)], "email": EMAIL})
 else:
     user = users.create(
         {
             "name": "AI Assistant",
             "login": LOGIN,
+            "email": EMAIL,
             # Never used: the API authenticates with the API key only.
             "password": secrets.token_urlsafe(32),
             "groups_id": [(6, 0, group_ids)],
@@ -44,4 +47,5 @@ api_keys.sudo().search([("user_id", "=", user.id), ("name", "=", KEY_NAME)]).unl
 key = api_keys.with_user(user).sudo()._generate("rpc", KEY_NAME, None)
 env.cr.commit()
 
-print(f"ODOO_API_KEY={key}")  # noqa: T201 - consumed by init_odoo.sh
+# The key line is consumed by init_odoo.sh.
+print(f"ODOO_API_KEY={key}")  # noqa: T201

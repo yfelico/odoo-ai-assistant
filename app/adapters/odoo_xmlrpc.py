@@ -3,13 +3,14 @@
 import http.client
 import logging
 import xmlrpc.client
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from typing import Protocol, Self, cast
 
 from app.config import Settings
 from app.domain.models import (
+    CreatedQuotation,
     ERPAuthenticationError,
     ERPError,
     ERPUnavailableError,
@@ -18,6 +19,7 @@ from app.domain.models import (
     OverdueInvoice,
     Partner,
     Product,
+    QuotationLine,
     SaleOrderDetail,
     SaleOrderLine,
     SalesGroup,
@@ -61,6 +63,8 @@ SALE_ORDER_LINE_FIELDS = ["product_id", "name", "product_uom_qty", "price_unit",
 SEARCH_READ = "search_read"
 READ_GROUP = "read_group"
 PRODUCT_FIELD = "product_id"
+CREATED_QUOTATION_FIELDS = ["id", "name", "amount_untaxed", "amount_total"]
+NOTE_SUBTYPE = "mail.mt_note"  # internal note: followers are not emailed
 MANY2ONE_LENGTH = 2  # Odoo many2one values are [id, display_name]
 ORDER_TOTAL_FIELD = "amount_untaxed"
 LINE_TOTAL_FIELD = "price_subtotal"
@@ -179,15 +183,59 @@ class OdooXmlRpcGateway:
             [[["name", "ilike", name]]],
             {"fields": PARTNER_FIELDS, "limit": limit},
         )
-        return [
-            Partner(
-                id=_int(row, "id"),
-                name=_str(row, "name"),
-                email=_optional_str(row, "email"),
-                city=_optional_str(row, "city"),
+        return [_partner(row) for row in _records(rows)]
+
+    def get_partner(self, partner_id: int) -> Partner | None:
+        rows = _records(
+            self._execute(
+                PARTNER_MODEL,
+                SEARCH_READ,
+                [[["id", "=", partner_id]]],
+                {"fields": PARTNER_FIELDS, "limit": 1},
             )
-            for row in _records(rows)
+        )
+        return _partner(rows[0]) if rows else None
+
+    def get_products(self, product_ids: Iterable[int]) -> list[Product]:
+        rows = self._execute(
+            PRODUCT_MODEL,
+            SEARCH_READ,
+            [[["id", "in", list(product_ids)], ["sale_ok", "=", True]]],
+            {"fields": PRODUCT_FIELDS},
+        )
+        return [_product(row) for row in _records(rows)]
+
+    def create_quotation(
+        self, partner_id: int, lines: Sequence[QuotationLine], note: str
+    ) -> CreatedQuotation:
+        # Odoo prices the lines itself (pricelist, taxes); only product and quantity are sent.
+        order_lines = [
+            [0, 0, {"product_id": line.product_id, "product_uom_qty": line.quantity}]
+            for line in lines
         ]
+        created = self._execute(
+            SALE_ORDER_MODEL, "create", [{"partner_id": partner_id, "order_line": order_lines}], {}
+        )
+        if isinstance(created, bool) or not isinstance(created, int):
+            raise ERPError("Odoo did not return the new quotation id")
+        logger.info("Created quotation %s for partner %s", created, partner_id)
+        self._post_note(created, note)
+        rows = _records(
+            self._execute(
+                SALE_ORDER_MODEL,
+                SEARCH_READ,
+                [[["id", "=", created]]],
+                {"fields": CREATED_QUOTATION_FIELDS, "limit": 1},
+            )
+        )
+        if not rows:
+            raise ERPError("The new quotation could not be read back")
+        return CreatedQuotation(
+            id=_int(rows[0], "id"),
+            name=_str(rows[0], "name"),
+            amount_untaxed=_amount(rows[0], "amount_untaxed"),
+            amount_total=_amount(rows[0], "amount_total"),
+        )
 
     def search_products(self, name: str, limit: int) -> list[Product]:
         domain: list[object] = [
@@ -200,16 +248,7 @@ class OdooXmlRpcGateway:
         rows = self._execute(
             PRODUCT_MODEL, SEARCH_READ, [domain], {"fields": PRODUCT_FIELDS, "limit": limit}
         )
-        return [
-            Product(
-                id=_int(row, "id"),
-                name=_str(row, "display_name"),
-                default_code=_optional_str(row, "default_code"),
-                list_price=_amount(row, "lst_price"),
-                uom=_many2one(row, "uom_id")[1],
-            )
-            for row in _records(rows)
-        ]
+        return [_product(row) for row in _records(rows)]
 
     def low_stock_products(self, limit: int) -> list[LowStockItem]:
         # qty_on_hand is computed (not stored), so the filter runs here, not in Odoo.
@@ -298,6 +337,18 @@ class OdooXmlRpcGateway:
             order_count=count,
             groups=groups,
         )
+
+    def _post_note(self, order_id: int, note: str) -> None:
+        try:
+            self._execute(
+                SALE_ORDER_MODEL,
+                "message_post",
+                [[order_id]],
+                {"body": note, "message_type": "comment", "subtype_xmlid": NOTE_SUBTYPE},
+            )
+        except ERPError:
+            # The quotation already exists: failing here would invite a duplicate on retry.
+            logger.warning("Quotation %s created but its chatter note failed", order_id)
 
     def ping(self) -> bool:
         try:
@@ -397,6 +448,25 @@ def _group_query(group_by: GroupBy, order_domain: Domain) -> _GroupQuery:
         total_field=LINE_TOTAL_FIELD,
         count_spec="order_id:count_distinct",
         groupby=PRODUCT_FIELD,
+    )
+
+
+def _partner(row: Record) -> Partner:
+    return Partner(
+        id=_int(row, "id"),
+        name=_str(row, "name"),
+        email=_optional_str(row, "email"),
+        city=_optional_str(row, "city"),
+    )
+
+
+def _product(row: Record) -> Product:
+    return Product(
+        id=_int(row, "id"),
+        name=_str(row, "display_name"),
+        default_code=_optional_str(row, "default_code"),
+        list_price=_amount(row, "lst_price"),
+        uom=_many2one(row, "uom_id")[1],
     )
 
 
