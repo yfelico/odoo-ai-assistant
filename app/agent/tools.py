@@ -1,40 +1,61 @@
 """Business tools the model may call: input validation, dispatch and result wrapping.
 
-Only read operations are registered here. Quotation creation is deliberately absent:
-it is triggered by ``POST /confirm`` after the user approves a draft.
+The model gets the read tools plus ``prepare_quotation``, which only stores a draft.
+``create_quotation`` is deliberately not a tool: only ``POST /confirm`` calls it, after
+the user approves the draft.
 """
 
 import logging
+import time
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from typing import Annotated, Self
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from pydantic_core import to_json
 
-from app.domain.models import ERPError, ERPUnavailableError, GroupBy, ToolCall, ToolSpec
+from app.agent import audit
+from app.agent.drafts import DEFAULT_DRAFT_TTL_SECONDS, DraftStore
+from app.domain.models import (
+    CreatedQuotation,
+    ERPError,
+    ERPUnavailableError,
+    GroupBy,
+    QuotationDraft,
+    QuotationLine,
+    ToolCall,
+    ToolSpec,
+)
 from app.domain.ports import ERPGateway
 
 logger = logging.getLogger(__name__)
 
 DATA_OPEN = "<odoo_data>"
 DATA_CLOSE = "</odoo_data>"
+QUOTATION_NOTE = "Creado por el asistente de IA tras confirmación del usuario"
 
 SearchText = Annotated[str, Field(min_length=1, max_length=100)]
 SearchLimit = Annotated[int, Field(ge=1, le=20, description="Maximum results (1-20).")]
+
+
+def _default_drafts() -> DraftStore:
+    return DraftStore(ttl_seconds=DEFAULT_DRAFT_TTL_SECONDS)
 
 
 @dataclass(frozen=True, slots=True)
 class ToolContext:
     gateway: ERPGateway
     today: date
+    drafts: DraftStore = field(default_factory=_default_drafts)
+    conversation_id: str = ""
 
 
 @dataclass(frozen=True, slots=True)
 class ToolResult:
     content: str
     is_error: bool
+    draft: QuotationDraft | None = None  # set when prepare_quotation stored a draft
 
 
 class ToolFailedError(Exception):
@@ -80,6 +101,16 @@ class OverdueInvoicesInput(_Input):
 
 class GetSaleOrderInput(_Input):
     name: str = Field(min_length=1, max_length=64, description="Order reference, e.g. S00023.")
+
+
+class QuotationLineInput(_Input):
+    product_id: int = Field(gt=0, description="Product id from search_products.")
+    quantity: float = Field(gt=0, le=100_000, description="Quantity in the product's unit.")
+
+
+class PrepareQuotationInput(_Input):
+    partner_id: int = Field(gt=0, description="Customer id from search_partners.")
+    lines: list[QuotationLineInput] = Field(min_length=1, max_length=50)
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,6 +166,28 @@ def _get_sale_order(ctx: ToolContext, args: GetSaleOrderInput) -> object:
     return order
 
 
+def _prepare_quotation(ctx: ToolContext, args: PrepareQuotationInput) -> object:
+    partner = ctx.gateway.get_partner(args.partner_id)
+    if partner is None:
+        raise ToolFailedError(f"No customer with id {args.partner_id}.")
+    wanted = {line.product_id for line in args.lines}
+    products = {p.id: p for p in ctx.gateway.get_products(sorted(wanted))}
+    missing = sorted(wanted - products.keys())
+    if missing:
+        raise ToolFailedError(f"Products not found or not for sale: {missing}.")
+    lines = [
+        QuotationLine(
+            product_id=line.product_id,
+            product_name=products[line.product_id].name,
+            quantity=line.quantity,
+            price_unit=products[line.product_id].list_price,
+            subtotal=round(line.quantity * products[line.product_id].list_price, 2),
+        )
+        for line in args.lines
+    ]
+    return ctx.drafts.create(partner_id=partner.id, partner_name=partner.name, lines=lines)
+
+
 READ_TOOLS: Mapping[str, Tool] = {
     tool.name: tool
     for tool in (
@@ -179,6 +232,19 @@ READ_TOOLS: Mapping[str, Tool] = {
 }
 
 
+AGENT_TOOLS: Mapping[str, Tool] = {
+    **READ_TOOLS,
+    "prepare_quotation": _tool(
+        "prepare_quotation",
+        "Prepare a quotation draft for a customer with product lines, priced at list price. "
+        "It does NOT create anything in Odoo: the user must confirm the draft in the "
+        "interface. Get partner_id from search_partners and product_id from search_products.",
+        PrepareQuotationInput,
+        _prepare_quotation,
+    ),
+}
+
+
 def tool_specs(tools: Mapping[str, Tool]) -> list[ToolSpec]:
     return [ToolSpec(t.name, t.description, t.parameters) for t in tools.values()]
 
@@ -190,17 +256,63 @@ def run_tool(tools: Mapping[str, Tool], call: ToolCall, context: ToolContext) ->
         return _error(f"Unknown tool {call.name!r}. Available tools: {', '.join(tools)}.")
     try:
         value = tool.execute(context, call.arguments)
-    except ValidationError as err:
-        return _error(f"Invalid arguments for {call.name}: {_describe(err)}")
-    except ToolFailedError as err:
-        return _error(str(err))
-    except ERPUnavailableError:
-        logger.warning("Tool %s failed: Odoo unreachable", call.name)
-        return _error("Odoo is unreachable right now. Try again later.")
-    except ERPError as err:
-        logger.warning("Tool %s failed: %s", call.name, err)
-        return _error(f"Odoo could not answer: {err}")
+    except (ValidationError, ToolFailedError, ERPError) as err:
+        return _error(_failure_message(call.name, err))
+    if isinstance(value, QuotationDraft):
+        return ToolResult(content=_wrap(_draft_view(value)), is_error=False, draft=value)
     return ToolResult(content=_wrap(value), is_error=False)
+
+
+def _failure_message(tool: str, err: Exception) -> str:
+    if isinstance(err, ValidationError):
+        return f"Invalid arguments for {tool}: {_describe(err)}"
+    if isinstance(err, ERPUnavailableError):
+        logger.warning("Tool %s failed: Odoo unreachable", tool)
+        return "Odoo is unreachable right now. Try again later."
+    if isinstance(err, ERPError):
+        logger.warning("Tool %s failed: %s", tool, err)
+        return f"Odoo could not answer: {err}"
+    return str(err)
+
+
+def create_quotation(draft_id: str, drafts: DraftStore, gateway: ERPGateway) -> CreatedQuotation:
+    """Create the confirmed draft in the ERP. Only ``POST /confirm`` calls this.
+
+    The draft is consumed so it cannot be confirmed twice; if the ERP fails it is
+    restored and the user can retry.
+    """
+    draft = drafts.take(draft_id)
+    started = time.monotonic()
+    try:
+        created = gateway.create_quotation(draft.partner_id, draft.lines, QUOTATION_NOTE)
+    except ERPError:
+        drafts.restore(draft)
+        _audit_creation(draft, None, started)
+        raise
+    _audit_creation(draft, created.id, started)
+    return created
+
+
+def _audit_creation(draft: QuotationDraft, quotation_id: int | None, started: float) -> None:
+    audit.quotation_created(
+        draft_id=draft.id,
+        partner_id=draft.partner_id,
+        quotation_id=quotation_id,
+        outcome="error" if quotation_id is None else "ok",
+        duration=time.monotonic() - started,
+    )
+
+
+def _draft_view(draft: QuotationDraft) -> dict[str, object]:
+    return {
+        "draft_id": draft.id,
+        "status": "pending_user_confirmation",
+        "partner": {"id": draft.partner_id, "name": draft.partner_name},
+        "lines": draft.lines,
+        "estimated_total_untaxed": draft.estimated_total_untaxed,
+        "note": "Not created yet: the user must confirm this draft in the interface. "
+        "Odoo sets the final prices and taxes on creation.",
+    }
 
 
 def _wrap(value: object) -> str:

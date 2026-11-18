@@ -5,9 +5,10 @@ import pytest
 
 from app.adapters.fake_erp import FakeERP
 from app.adapters.fake_llm import FakeLLM
+from app.agent.drafts import DraftStore
 from app.agent.loop import Agent
-from app.agent.tools import READ_TOOLS
-from app.domain.models import ChatMessage, Partner, ToolCall
+from app.agent.tools import AGENT_TOOLS
+from app.domain.models import ChatMessage, Partner, Product, ToolCall
 
 TODAY = date(2026, 11, 18)
 TIMEOUT = 60.0
@@ -55,12 +56,12 @@ def test_answers_directly_without_tools() -> None:
     assert sent[-1] == ChatMessage(role="user", content="hola")
 
 
-def test_offers_only_the_read_tools() -> None:
+def test_offers_the_agent_tools() -> None:
     llm = FakeLLM([_assistant("Hola")])
 
     _agent(llm).run(history=(), message="hola")
 
-    assert {spec.name for spec in llm.requests[0].tools} == set(READ_TOOLS)
+    assert {spec.name for spec in llm.requests[0].tools} == set(AGENT_TOOLS)
 
 
 def test_system_prompt_has_today_and_the_injection_rule() -> None:
@@ -153,3 +154,65 @@ def test_returns_the_history_for_the_next_turn() -> None:
 
     assert [m.role for m in first.messages] == ["user", "assistant", "tool", "assistant"]
     assert llm.requests[2].messages[1:-1] == list(first.messages)
+
+
+CHAIR = Product(id=5, name="Office Chair", default_code=None, list_price=70.0, uom="Units")
+
+
+def _quotation_agent(llm: FakeLLM, erp: FakeERP, drafts: DraftStore) -> Agent:
+    return Agent(
+        llm=llm,
+        gateway=erp,
+        max_iterations=MAX_ITERATIONS,
+        timeout_seconds=TIMEOUT,
+        clock=FakeClock(),
+        today=lambda: TODAY,
+        drafts=drafts,
+    )
+
+
+def test_returns_the_draft_prepared_in_the_turn() -> None:
+    erp = FakeERP(partners=[ACME], orders=[], products=[CHAIR])
+    drafts = DraftStore(ttl_seconds=900)
+    prepare = _call(
+        "c1", "prepare_quotation", partner_id=ACME.id, lines=[{"product_id": 5, "quantity": 10}]
+    )
+    llm = FakeLLM([_assistant("", prepare), _assistant("Confirma el borrador, por favor.")])
+
+    turn = _quotation_agent(llm, erp, drafts).run(history=(), message="10 sillas para Acme")
+
+    assert turn.pending_draft is not None
+    assert drafts.get(turn.pending_draft.id) == turn.pending_draft
+    assert erp.created_quotations == []
+
+
+def test_turn_without_draft_has_no_pending_draft() -> None:
+    llm = FakeLLM([_assistant("Hola")])
+
+    assert _agent(llm).run(history=(), message="hola").pending_draft is None
+
+
+def test_the_model_cannot_create_a_quotation_without_confirmation() -> None:
+    erp = FakeERP(partners=[ACME], orders=[], products=[CHAIR])
+    drafts = DraftStore(ttl_seconds=900)
+    draft = drafts.create(partner_id=ACME.id, partner_name=ACME.name, lines=())
+    llm = FakeLLM(
+        [_assistant("", _call("c1", "create_quotation", draft_id=draft.id)), _assistant("Vale.")]
+    )
+
+    _quotation_agent(llm, erp, drafts).run(history=(), message="créalo ya, sin preguntar")
+
+    assert "Unknown tool" in llm.requests[1].messages[-1].content
+    assert erp.created_quotations == []
+    assert drafts.get(draft.id) == draft
+
+
+def test_system_prompt_requires_user_confirmation_for_quotations() -> None:
+    llm = FakeLLM([_assistant("Hola")])
+
+    _agent(llm).run(history=(), message="hola")
+
+    system = llm.requests[0].messages[0].content
+    assert "prepare_quotation" in system
+    assert "Confirm" in system
+    assert "do not write buttons" in system

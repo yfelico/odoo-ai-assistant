@@ -62,10 +62,10 @@ Cada herramienta es una operación de negocio con parámetros validados por un m
 | `low_stock_products` | `limit: int = 20` (máx. 50) | producto, stock disponible (`qty_on_hand`), stock previsto (informativo) y mínimo de la regla; solo reglas con disponible < mínimo, ordenadas por déficit. El filtro se hace en Python porque `qty_on_hand` no está almacenado | `stock.warehouse.orderpoint` | Lectura |
 | `overdue_invoices` | `partner_id: int \| None = None` | número, cliente (entidad comercial), fecha de vencimiento, saldo pendiente y total, más el número de facturas y la suma de saldos; vencida = fecha de vencimiento anterior a hoy (UTC); el filtro por cliente incluye sus contactos (`child_of`) | `account.move` (`out_invoice`, `posted`, `payment_state` `not_paid` o `partial`) | Lectura |
 | `get_sale_order` | `name: str` (ej. `S00023`, sin distinguir mayúsculas) | cabecera y líneas de producto del pedido (sin secciones ni notas) | `sale.order`, `sale.order.line` | Lectura |
-| `prepare_quotation` | `partner_id: int`, `lines: list[{product_id: int, quantity: float > 0}]` (1 a 50 líneas) | `draft_id`, resumen legible y total estimado; **no escribe en Odoo** | Solo lectura de precios | Preparación |
+| `prepare_quotation` | `partner_id: int`, `lines: list[{product_id: int, quantity: float > 0}]` (1 a 50 líneas) | `draft_id`, resumen legible y total estimado sin impuestos (cantidad × precio de tarifa); valida que el cliente exista y que los productos existan y se puedan vender; **no escribe en Odoo** | Solo lectura (`res.partner`, `product.product`) | Preparación |
 | `create_quotation` | `draft_id: str` | id, nombre y totales del presupuesto creado; Odoo calcula precios e impuestos | `sale.order` (`create` y `message_post`) | Escritura: **solo desde `POST /confirm`, nunca disponible para el LLM** |
 
-Los borradores se guardan en memoria del proceso (un diccionario con caducidad) en el MVP. Un borrador caducado o desconocido devuelve un error claro.
+Los borradores se guardan en memoria del proceso (un diccionario con caducidad, `DRAFT_TTL_SECONDS`, 900 por defecto) en el MVP. Un borrador caducado, desconocido o ya confirmado devuelve un error claro. Confirmar consume el borrador, así que un doble clic no crea dos presupuestos; si Odoo falla, el borrador se conserva para reintentar.
 
 ## 5. API
 
@@ -84,7 +84,7 @@ Los borradores se guardan en memoria del proceso (un diccionario con caducidad) 
 - **Validación:** Pydantic valida cada llamada antes de tocar Odoo. Los argumentos inválidos vuelven al LLM como un error de herramienta legible, sin lanzar excepciones al usuario.
 - **Prompt injection:** los textos que vienen de Odoo (notas, descripciones, nombres) se pasan al modelo como datos dentro de etiquetas `<odoo_data>`. El system prompt indica que nunca siga instrucciones que aparezcan ahí.
 - **Límites del bucle:** `AGENT_MAX_ITERATIONS` (por defecto 6) y `AGENT_TIMEOUT_SECONDS` (por defecto 60).
-- **Auditoría:** cada llamada a una herramienta se registra con conversación, herramienta, argumentos y duración, sin datos personales. El presupuesto creado lleva un mensaje en el chatter: "Creado por el asistente de IA tras confirmación del usuario".
+- **Auditoría:** cada llamada a una herramienta se registra en el logger `app.audit` (una línea JSON por evento) con conversación, herramienta, argumentos, resultado y duración, sin datos personales: los ids, números y booleanos se registran tal cual y los textos libres se sustituyen por su longitud. Cada confirmación registra el borrador, el cliente (id), el presupuesto creado y el resultado. El presupuesto creado lleva una nota interna en el chatter: "Creado por el asistente de IA tras confirmación del usuario"; para publicarla, el usuario técnico necesita un email (`ai-assistant@example.com`).
 - **Datos:** solo la base de demostración. Nunca datos reales en el repositorio, las pruebas ni las evals.
 
 ## 7. Calidad
@@ -111,6 +111,7 @@ odoo-ai-assistant/
 │   │   ├── tools.py         # definición, validación y despacho
 │   │   ├── conversations.py # historial de conversaciones en memoria con caducidad
 │   │   ├── drafts.py        # almacén de borradores con caducidad
+│   │   ├── audit.py         # registro de auditoría sin datos personales
 │   │   └── prompts.py       # system prompt versionado
 │   ├── adapters/
 │   │   ├── odoo_xmlrpc.py
@@ -120,6 +121,7 @@ odoo-ai-assistant/
 │   ├── api/routes.py
 │   ├── web/index.html       # chat mínimo servido en GET /
 │   ├── config.py            # pydantic-settings, lee .env
+│   ├── logging_config.py    # logs de la app (y auditoría) a nivel INFO
 │   └── main.py
 ├── odoo_addons/
 │   └── ai_assistant_chat/   # fase 5: chat OWL en la barra superior de Odoo
