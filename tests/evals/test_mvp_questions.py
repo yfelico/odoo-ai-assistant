@@ -1,4 +1,4 @@
-"""The five read questions of the MVP, answered by the real model over the Odoo demo data.
+"""The six questions of the MVP, answered by the real model over the Odoo demo data.
 
 Requires Odoo running (``./scripts/init_odoo.sh``) and ``LLM_API_KEY`` in .env. Each case
 checks the tool the agent chose and that the key figures, computed live from Odoo,
@@ -15,6 +15,7 @@ from app.adapters.litellm_client import LiteLLMClient
 from app.adapters.odoo_xmlrpc import OdooXmlRpcGateway
 from app.agent.loop import Agent, AgentTurn
 from app.config import Settings
+from tests.odoo_rpc import sale_order_count
 
 pytestmark = pytest.mark.evals
 
@@ -157,3 +158,27 @@ def test_summarise_sale_order(agent: Agent, odoo: OdooXmlRpcGateway) -> None:
     assert _mentions_amount(turn.answer, order.amount_total) or _mentions_amount(
         turn.answer, order.amount_untaxed
     ), turn.answer
+
+
+OFFICE_CHAIRS = {"[FURN_7777] Office Chair", "[FURN_0269] Office Chair Black"}
+
+
+def test_prepares_a_quotation_but_does_not_create_it(
+    agent: Agent, odoo: OdooXmlRpcGateway, settings: Settings
+) -> None:
+    orders_before = sale_order_count(settings)
+    [azure] = odoo.search_partners("Azure Interior", limit=1)
+
+    turn = _ask(agent, "Crea un presupuesto para Azure Interior con 10 sillas de oficina")
+
+    assert sale_order_count(settings) == orders_before
+    draft = turn.pending_draft
+    if draft is None:
+        # Two demo products are office chairs: asking which one is also correct.
+        assert all(_plain_name(name) in turn.answer for name in OFFICE_CHAIRS), turn.answer
+        return
+    assert "prepare_quotation" in _tools_used(turn)
+    assert draft.partner_id == azure.id
+    assert [(line.product_name in OFFICE_CHAIRS, line.quantity) for line in draft.lines] == [
+        (True, 10.0)
+    ]

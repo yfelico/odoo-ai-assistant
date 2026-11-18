@@ -21,6 +21,8 @@ Open http://localhost:8000/ to chat with the assistant, or call the API directly
 curl -X POST http://localhost:8000/chat -H "Content-Type: application/json"   -d '{"message": "¿Qué productos están por debajo del stock mínimo?"}'
 ```
 
+Ask for a quotation ("Crea un presupuesto para Azure Interior con 10 Office Chair") and the assistant prepares a draft without touching Odoo; the page shows it with a **Confirm** button, which calls `POST /confirm` to create the quotation.
+
 The model is any [LiteLLM](https://docs.litellm.ai/docs/providers) model string in `LLM_MODEL` (default: Gemini), with the provider key in `LLM_API_KEY`. A free Gemini key is available from Google AI Studio. After changing `.env`, recreate the API container: `docker compose up -d --force-recreate api`.
 
 If port 8069 is already taken (e.g. by another Odoo), set `ODOO_PORT` and `ODOO_URL` in `.env`, for example `ODOO_PORT=8018` and `ODOO_URL=http://localhost:8018`. Inside Docker the API always reaches Odoo at `http://odoo:8069`.
@@ -30,7 +32,10 @@ If port 8069 is already taken (e.g. by another Odoo), set `ODOO_PORT` and `ODOO_
 - The technical user relies on standard Odoo groups (Sales: all documents, Inventory: user, Accounting: read-only). They grant read access to everything the agent needs but still allow some writes.
 - Sales amounts are the orders' untaxed totals, which match the company currency only in single-currency databases such as the demo.
 - Sales periods are UTC calendar days with an inclusive end date. "Today" (for overdue invoices and relative periods) is also the UTC date.
-- Conversation histories live in the API process memory: they are lost on restart and not shared between workers.
+- Conversation histories and quotation drafts live in the API process memory: they are lost on restart and not shared between workers.
+- A draft's total is an estimate at list price, without taxes; Odoo applies the customer's pricelist and taxes when the quotation is created.
+- If Odoo times out while creating a quotation, it may have been created anyway; retrying the confirmation could then create a duplicate.
+- Integration tests create real quotations in the demo database and cancel them afterwards (the technical user cannot delete them).
 
 ## Development
 

@@ -76,6 +76,14 @@
       cursor: pointer;
     }
     button:disabled { opacity: 0.6; cursor: wait; }
+    .draft { border-color: var(--accent); }
+    .draft h2 { font-size: 1rem; margin: 0 0 8px; }
+    .draft table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    .draft th, .draft td { padding: 4px 6px; border-bottom: 1px solid var(--border); text-align: left; }
+    .draft td.num, .draft th.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .draft .total { margin: 8px 0; font-weight: 600; }
+    .draft .hint { color: var(--muted); font-size: 0.85rem; margin: 0 0 8px; }
+    .draft button { padding: 8px 18px; }
   </style>
 </head>
 <body>
@@ -118,6 +126,76 @@
       item.scrollIntoView({ behavior: "smooth", block: "end" });
     }
 
+    const amount = new Intl.NumberFormat("es", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    function cell(row, text, numeric) {
+      const td = document.createElement("td");
+      td.textContent = text;
+      if (numeric) td.className = "num";
+      row.append(td);
+    }
+
+    function addDraft(draft) {
+      const card = document.createElement("div");
+      card.className = "msg draft";
+      const title = document.createElement("h2");
+      title.textContent = "Borrador de presupuesto · " + draft.partner_name;
+      const table = document.createElement("table");
+      const head = table.createTHead().insertRow();
+      [["Producto", false], ["Cantidad", true], ["Precio", true], ["Subtotal", true]].forEach(([label, numeric]) => {
+        const th = document.createElement("th");
+        th.textContent = label;
+        if (numeric) th.className = "num";
+        head.append(th);
+      });
+      const body = table.createTBody();
+      draft.lines.forEach((line) => {
+        const row = body.insertRow();
+        cell(row, line.product_name, false);
+        cell(row, String(line.quantity), true);
+        cell(row, amount.format(line.price_unit), true);
+        cell(row, amount.format(line.subtotal), true);
+      });
+      const total = document.createElement("p");
+      total.className = "total";
+      total.textContent = "Total estimado sin impuestos: " + amount.format(draft.estimated_total_untaxed);
+      const hint = document.createElement("p");
+      hint.className = "hint";
+      hint.textContent = "Aún no existe en Odoo. Al confirmar, Odoo aplica la tarifa y los impuestos.";
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = "Confirmar y crear presupuesto";
+      button.addEventListener("click", () => confirmDraft(draft.draft_id, button));
+      card.append(title, table, total, hint, button);
+      log.append(card);
+      card.scrollIntoView({ behavior: "smooth", block: "end" });
+    }
+
+    async function confirmDraft(draftId, button) {
+      button.disabled = true;
+      try {
+        const response = await fetch("/confirm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ draft_id: draftId }),
+        });
+        const body = await response.json();
+        if (response.ok) {
+          button.textContent = "Creado";
+          addMessage("Presupuesto " + body.name + " creado en Odoo. Total: "
+            + amount.format(body.amount_total) + " (sin impuestos: "
+            + amount.format(body.amount_untaxed) + ").", "assistant");
+          return;
+        }
+        addMessage(typeof body.detail === "string" ? body.detail : "Error " + response.status, "error");
+        // 404: the draft is gone for good; other errors keep it, so the user can retry.
+        button.disabled = response.status === 404;
+      } catch (error) {
+        addMessage(error.message, "error");
+        button.disabled = false;
+      }
+    }
+
     async function ask(message) {
       const response = await fetch("/chat", {
         method: "POST",
@@ -142,6 +220,7 @@
         const body = await ask(message);
         conversationId = body.conversation_id;
         addMessage(body.answer, "assistant", body.tool_calls);
+        if (body.pending_draft) addDraft(body.pending_draft);
       } catch (error) {
         addMessage(error.message, "error");
       } finally {

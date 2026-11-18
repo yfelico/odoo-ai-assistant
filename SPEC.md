@@ -72,11 +72,11 @@ Los borradores se guardan en memoria del proceso (un diccionario con caducidad, 
 | Endpoint | Entrada | Salida |
 | --- | --- | --- |
 | `POST /chat` | `{"message": str, "conversation_id": str \| null}` | `{"conversation_id": str, "answer": str, "pending_draft": {...} \| null, "tool_calls": [...]}` |
-| `POST /confirm` | `{"draft_id": str}` | `{"quotation_id": int, "name": str}` |
+| `POST /confirm` | `{"draft_id": str}` | `{"quotation_id": int, "name": str, "amount_untaxed": float, "amount_total": float}`; 404 si el borrador no existe, caducó o ya se confirmó; 502 si Odoo lo rechaza; 503 si Odoo no responde |
 | `GET /health` | | `{"status": "ok", "odoo": "ok" \| "unreachable"}` |
 | `GET /` | | Chat web mínimo (HTML) |
 
-`tool_calls` en la respuesta lista las herramientas usadas con sus argumentos (`[{"name": str, "arguments": {...}}]`), para mostrar en la interfaz qué hizo el agente. El historial de cada `conversation_id` se guarda en memoria del proceso y caduca tras `CONVERSATION_TTL_SECONDS` sin actividad. Si el modelo falla, `POST /chat` responde 503.
+`tool_calls` en la respuesta lista las herramientas usadas con sus argumentos (`[{"name": str, "arguments": {...}}]`), para mostrar en la interfaz qué hizo el agente. El historial de cada `conversation_id` se guarda en memoria del proceso y caduca tras `CONVERSATION_TTL_SECONDS` sin actividad. Si el modelo falla, `POST /chat` responde 503. `pending_draft` es el último borrador preparado en el turno: `{"draft_id", "partner_id", "partner_name", "lines": [{"product_id", "product_name", "quantity", "price_unit", "subtotal"}], "estimated_total_untaxed"}`.
 
 ## 6. Seguridad y guardarraíles
 
