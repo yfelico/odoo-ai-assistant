@@ -13,7 +13,7 @@ El MVP se limita a ventas, inventario y facturación sobre una base de Odoo con 
 | "¿Cuánto vendimos este mes y cómo va contra el mes pasado?" | Agrega pedidos confirmados de los dos períodos y calcula la variación |
 | "¿Quiénes son los 5 clientes que más compran?" | Agrupa ventas por cliente y ordena |
 | "¿Qué productos están por debajo del stock mínimo?" | Cruza existencias con reglas de reabastecimiento |
-| "¿Qué facturas de Azure Interior están vencidas?" | Busca el cliente, filtra facturas vencidas y suma el saldo |
+| "¿Qué facturas de Acme Corporation están vencidas?" | Busca el cliente, filtra facturas vencidas y suma el saldo |
 | "Resúmeme el pedido S00023" | Lee el pedido y sus líneas y lo explica |
 | "Crea un presupuesto para Azure Interior con 10 sillas de oficina" | Prepara el borrador, lo muestra y **pide confirmación** antes de crearlo |
 
@@ -57,11 +57,11 @@ Cada herramienta es una operación de negocio con parámetros validados por un m
 | Herramienta | Parámetros | Devuelve | Modelos de Odoo | Tipo |
 | --- | --- | --- | --- | --- |
 | `search_partners` | `name: str`, `limit: int = 5` (máx. 20) | id, nombre, email, ciudad | `res.partner` | Lectura |
-| `search_products` | `name: str`, `limit: int = 5` (máx. 20) | id, nombre, referencia, precio de venta, unidad | `product.product` | Lectura |
+| `search_products` | `name: str`, `limit: int = 5` (máx. 20) | id, nombre, referencia, precio de venta, unidad; busca por nombre o referencia entre los productos vendibles | `product.product` | Lectura |
 | `sales_summary` | `date_from: date`, `date_to: date`, `group_by: Literal["none", "partner", "product"] = "none"`, `limit: int = 10` | total sin impuestos y número de pedidos, global o por grupo, en moneda de la compañía; fechas en días UTC con fin inclusivo | `sale.order` (estado `sale`), `read_group`; por producto, `sale.order.line` con pedidos distintos (`order_id:count_distinct`) | Lectura |
-| `low_stock_products` | `limit: int = 20` | producto, stock disponible, mínimo de la regla | `stock.warehouse.orderpoint` | Lectura |
-| `overdue_invoices` | `partner_id: int \| None = None` | número, cliente, fecha de vencimiento, saldo pendiente y total | `account.move` (`out_invoice`, `posted`, no pagadas, vencidas) | Lectura |
-| `get_sale_order` | `name: str` (ej. `S00023`) | cabecera y líneas del pedido | `sale.order`, `sale.order.line` | Lectura |
+| `low_stock_products` | `limit: int = 20` (máx. 50) | producto, stock disponible (`qty_on_hand`), stock previsto (informativo) y mínimo de la regla; solo reglas con disponible < mínimo, ordenadas por déficit. El filtro se hace en Python porque `qty_on_hand` no está almacenado | `stock.warehouse.orderpoint` | Lectura |
+| `overdue_invoices` | `partner_id: int \| None = None` | número, cliente (entidad comercial), fecha de vencimiento, saldo pendiente y total, más el número de facturas y la suma de saldos; vencida = fecha de vencimiento anterior a hoy (UTC); el filtro por cliente incluye sus contactos (`child_of`) | `account.move` (`out_invoice`, `posted`, `payment_state` `not_paid` o `partial`) | Lectura |
+| `get_sale_order` | `name: str` (ej. `S00023`, sin distinguir mayúsculas) | cabecera y líneas de producto del pedido (sin secciones ni notas) | `sale.order`, `sale.order.line` | Lectura |
 | `prepare_quotation` | `partner_id: int`, `lines: list[{product_id: int, quantity: float > 0}]` (1 a 50 líneas) | `draft_id`, resumen legible y total estimado; **no escribe en Odoo** | Solo lectura de precios | Preparación |
 | `create_quotation` | `draft_id: str` | id y nombre del presupuesto creado | `sale.order` | Escritura: **solo desde `POST /confirm`, nunca disponible para el LLM** |
 

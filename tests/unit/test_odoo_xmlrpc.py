@@ -1,6 +1,6 @@
 import xmlrpc.client
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 
 import pytest
 
@@ -9,14 +9,20 @@ from app.domain.models import (
     ERPAuthenticationError,
     ERPError,
     ERPUnavailableError,
+    LowStockItem,
+    OverdueInvoice,
     Partner,
+    Product,
+    SaleOrderDetail,
+    SaleOrderLine,
     SalesGroup,
 )
 
 URL = "http://odoo.test:8069"
 DB = "demo"
 LOGIN = "ai_assistant"
-API_KEY = "test-api-key"  # noqa: S105 - fake value for an in-memory server
+# Fake value for an in-memory server.
+API_KEY = "test-api-key"  # noqa: S105
 UID = 7
 MARCH = (date(2026, 3, 1), date(2026, 3, 31))
 MARCH_DOMAIN = [
@@ -57,7 +63,8 @@ class FakeOdooServer:
         self.auth_calls.append((db, login, password, env))
         return self.uid
 
-    def execute_kw(  # noqa: PLR0913, PLR0917 - mirrors Odoo's execute_kw signature
+    # Mirrors Odoo's execute_kw signature.
+    def execute_kw(  # noqa: PLR0913, PLR0917
         self,
         db: str,
         uid: int,
@@ -238,3 +245,260 @@ def test_ping_false_when_server_unreachable(
     server.error = OSError("connection refused")
 
     assert gateway.ping() is False
+
+
+def test_search_products_matches_name_or_reference_of_saleable_products(
+    gateway: OdooXmlRpcGateway, server: FakeOdooServer
+) -> None:
+    server.replies = [
+        [
+            {
+                "id": 5,
+                "display_name": "[FURN_7777] Office Chair",
+                "default_code": "FURN_7777",
+                "lst_price": 70.0,
+                "uom_id": [1, "Units"],
+            },
+            {
+                "id": 6,
+                "display_name": "Lamp",
+                "default_code": False,
+                "lst_price": 40,
+                "uom_id": [1, "Units"],
+            },
+        ]
+    ]
+
+    products = gateway.search_products("chair", limit=5)
+
+    assert products == [
+        Product(
+            id=5,
+            name="[FURN_7777] Office Chair",
+            default_code="FURN_7777",
+            list_price=70.0,
+            uom="Units",
+        ),
+        Product(id=6, name="Lamp", default_code=None, list_price=40.0, uom="Units"),
+    ]
+    assert server.calls == [
+        ExecuteCall(
+            model="product.product",
+            method="search_read",
+            args=[
+                [
+                    "&",
+                    ["sale_ok", "=", True],
+                    "|",
+                    ["name", "ilike", "chair"],
+                    ["default_code", "ilike", "chair"],
+                ]
+            ],
+            kwargs={
+                "fields": ["id", "display_name", "default_code", "lst_price", "uom_id"],
+                "limit": 5,
+            },
+        )
+    ]
+
+
+def _orderpoint(product: list[object], on_hand: float, minimum: float) -> dict[str, object]:
+    return {
+        "id": 1,
+        "product_id": product,
+        "qty_on_hand": on_hand,
+        "qty_forecast": on_hand + 10,
+        "product_min_qty": minimum,
+    }
+
+
+def test_low_stock_products_filters_and_sorts_in_python(
+    gateway: OdooXmlRpcGateway, server: FakeOdooServer
+) -> None:
+    server.replies = [
+        [
+            _orderpoint([5, "Office Chair"], on_hand=1.0, minimum=3.0),
+            _orderpoint([6, "Office Lamp"], on_hand=0.0, minimum=5.0),
+            _orderpoint([7, "Desk"], on_hand=8.0, minimum=2.0),
+            _orderpoint([8, "Flipover"], on_hand=0.0, minimum=1.0),
+        ]
+    ]
+
+    items = gateway.low_stock_products(limit=2)
+
+    assert items == [
+        LowStockItem(
+            product_id=6,
+            product_name="Office Lamp",
+            qty_on_hand=0.0,
+            qty_forecast=10.0,
+            min_qty=5.0,
+        ),
+        LowStockItem(
+            product_id=5,
+            product_name="Office Chair",
+            qty_on_hand=1.0,
+            qty_forecast=11.0,
+            min_qty=3.0,
+        ),
+    ]
+    # qty_on_hand is not stored, so Odoo cannot filter on it.
+    assert server.calls == [
+        ExecuteCall(
+            model="stock.warehouse.orderpoint",
+            method="search_read",
+            args=[[]],
+            kwargs={"fields": ["product_id", "qty_on_hand", "qty_forecast", "product_min_qty"]},
+        )
+    ]
+
+
+OVERDUE_DOMAIN = [
+    ["move_type", "=", "out_invoice"],
+    ["state", "=", "posted"],
+    ["payment_state", "in", ["not_paid", "partial"]],
+    ["invoice_date_due", "<", "2026-11-18"],
+]
+INVOICE_FIELDS = [
+    "id",
+    "name",
+    "commercial_partner_id",
+    "invoice_date_due",
+    "amount_residual",
+    "amount_total",
+]
+
+
+def test_overdue_invoices(gateway: OdooXmlRpcGateway, server: FakeOdooServer) -> None:
+    server.replies = [
+        [
+            {
+                "id": 4,
+                "name": "INV/2026/00004",
+                "commercial_partner_id": [10, "Acme Corporation"],
+                "invoice_date_due": "2026-11-03",
+                "amount_residual": 31750.0,
+                "amount_total": 31750.0,
+            }
+        ]
+    ]
+
+    invoices = gateway.overdue_invoices(None, date(2026, 11, 18))
+
+    assert invoices == [
+        OverdueInvoice(
+            id=4,
+            name="INV/2026/00004",
+            partner_id=10,
+            partner_name="Acme Corporation",
+            due_date=date(2026, 11, 3),
+            amount_residual=31750.0,
+            amount_total=31750.0,
+        )
+    ]
+    assert server.calls == [
+        ExecuteCall(
+            model="account.move",
+            method="search_read",
+            args=[OVERDUE_DOMAIN],
+            kwargs={"fields": INVOICE_FIELDS, "order": "invoice_date_due asc, id asc"},
+        )
+    ]
+
+
+def test_overdue_invoices_of_a_partner_include_its_contacts(
+    gateway: OdooXmlRpcGateway, server: FakeOdooServer
+) -> None:
+    server.replies = [[]]
+
+    gateway.overdue_invoices(10, date(2026, 11, 18))
+
+    assert server.calls[0].args == [[*OVERDUE_DOMAIN, ["partner_id", "child_of", 10]]]
+
+
+def test_get_sale_order_reads_header_and_product_lines(
+    gateway: OdooXmlRpcGateway, server: FakeOdooServer
+) -> None:
+    server.replies = [
+        [
+            {
+                "id": 23,
+                "name": "S00023",
+                "partner_id": [11, "Gemini Furniture"],
+                "date_order": "2026-11-18 02:20:53",
+                "state": "sale",
+                "amount_untaxed": 4350.0,
+                "amount_total": 4350.0,
+            }
+        ],
+        [
+            {
+                "id": 48,
+                "product_id": [32, "Acoustic Bloc Screens"],
+                "name": "Acoustic Bloc Screens (White)",
+                "product_uom_qty": 10.0,
+                "price_unit": 295.0,
+                "price_subtotal": 2950.0,
+            }
+        ],
+    ]
+
+    order = gateway.get_sale_order("s00023")
+
+    assert order == SaleOrderDetail(
+        id=23,
+        name="S00023",
+        partner_id=11,
+        partner_name="Gemini Furniture",
+        date_order=datetime(2026, 11, 18, 2, 20, 53),
+        state="sale",
+        amount_untaxed=4350.0,
+        amount_total=4350.0,
+        lines=(
+            SaleOrderLine(
+                product_id=32,
+                product_name="Acoustic Bloc Screens",
+                description="Acoustic Bloc Screens (White)",
+                quantity=10.0,
+                price_unit=295.0,
+                subtotal=2950.0,
+            ),
+        ),
+    )
+    assert server.calls == [
+        ExecuteCall(
+            model="sale.order",
+            method="search_read",
+            args=[[["name", "=ilike", "s00023"]]],
+            kwargs={
+                "fields": [
+                    "id",
+                    "name",
+                    "partner_id",
+                    "date_order",
+                    "state",
+                    "amount_untaxed",
+                    "amount_total",
+                ],
+                "limit": 1,
+            },
+        ),
+        ExecuteCall(
+            model="sale.order.line",
+            method="search_read",
+            args=[[["order_id", "=", 23], ["display_type", "=", False]]],
+            kwargs={
+                "fields": ["product_id", "name", "product_uom_qty", "price_unit", "price_subtotal"],
+                "order": "sequence, id",
+            },
+        ),
+    ]
+
+
+def test_get_sale_order_escapes_like_wildcards(
+    gateway: OdooXmlRpcGateway, server: FakeOdooServer
+) -> None:
+    server.replies = [[]]
+
+    assert gateway.get_sale_order(r"S%_\1") is None
+    assert server.calls[0].args == [[["name", "=ilike", r"S\%\_\\1"]]]
