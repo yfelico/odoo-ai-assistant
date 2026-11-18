@@ -1,0 +1,2 @@
+# Keep LF everywhere: shell scripts break with CRLF and Docker images are Linux.
+* text=auto eol=lf
