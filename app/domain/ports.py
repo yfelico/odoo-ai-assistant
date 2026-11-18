@@ -1,9 +1,11 @@
 """Ports the application depends on. Adapters in app/adapters implement them."""
 
+from collections.abc import Sequence
 from datetime import date
 from typing import Protocol
 
 from app.domain.models import (
+    ChatMessage,
     GroupBy,
     LowStockItem,
     OverdueInvoice,
@@ -11,6 +13,7 @@ from app.domain.models import (
     Product,
     SaleOrderDetail,
     SalesSummary,
+    ToolSpec,
 )
 
 
@@ -52,4 +55,14 @@ class ERPGateway(Protocol):
 
     def ping(self) -> bool:
         """Whether the ERP answers. Never raises."""
+        ...
+
+
+class LLMClient(Protocol):
+    """A chat model that can request tool calls."""
+
+    def complete(
+        self, messages: Sequence[ChatMessage], tools: Sequence[ToolSpec], timeout: float
+    ) -> ChatMessage:
+        """The assistant's next message. Raises ``LLMError`` on provider failure."""
         ...

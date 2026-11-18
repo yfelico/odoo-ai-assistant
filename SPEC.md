@@ -42,7 +42,7 @@ Principios:
 | ERP | Odoo 18 Community con datos de demostración (módulos `sale_management`, `stock`, `account`) |
 | Lenguaje | Python 3.12, con type hints en todo el código |
 | API | FastAPI + Pydantic v2 |
-| LLM | LiteLLM; el modelo se elige con la variable `LLM_MODEL` |
+| LLM | LiteLLM; el modelo se elige con `LLM_MODEL` y la clave del proveedor con `LLM_API_KEY`. Por defecto, Gemini |
 | Agente | Bucle propio de tool calling, sin frameworks de agentes |
 | Acceso a Odoo | API externa XML-RPC (`xmlrpc.client` de la librería estándar): `/xmlrpc/2/common` para autenticar, `/xmlrpc/2/object` con `execute_kw` |
 | Pruebas | pytest; marcadores `integration` y `evals` |
@@ -108,12 +108,14 @@ odoo-ai-assistant/
 │   ├── agent/
 │   │   ├── loop.py          # bucle de tool calling
 │   │   ├── tools.py         # definición, validación y despacho
+│   │   ├── conversations.py # historial de conversaciones en memoria con caducidad
 │   │   ├── drafts.py        # almacén de borradores con caducidad
 │   │   └── prompts.py       # system prompt versionado
 │   ├── adapters/
 │   │   ├── odoo_xmlrpc.py
 │   │   ├── litellm_client.py
-│   │   └── fake_erp.py
+│   │   ├── fake_erp.py
+│   │   └── fake_llm.py      # respuestas guionadas para pruebas
 │   ├── api/routes.py
 │   ├── config.py            # pydantic-settings, lee .env
 │   └── main.py

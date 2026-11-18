@@ -1,10 +1,12 @@
-"""Business entities and errors. Pure Python: no external dependencies."""
+"""Business entities, LLM message types and errors. Pure Python: no external dependencies."""
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Literal
 
 GroupBy = Literal["none", "partner", "product"]
+Role = Literal["system", "user", "assistant", "tool"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,6 +91,33 @@ class SaleOrderDetail:
     lines: tuple[SaleOrderLine, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class ToolCall:
+    """A tool invocation requested by the model; ``arguments`` is raw JSON text."""
+
+    id: str
+    name: str
+    arguments: str
+
+
+@dataclass(frozen=True, slots=True)
+class ToolSpec:
+    name: str
+    description: str
+    parameters: Mapping[str, object]
+
+
+@dataclass(frozen=True, slots=True)
+class ChatMessage:
+    role: Role
+    content: str = ""
+    tool_calls: tuple[ToolCall, ...] = ()
+    tool_call_id: str | None = None
+    tool_name: str | None = None
+    # Opaque provider message (e.g. reasoning signatures) that must be sent back unchanged.
+    provider_payload: Mapping[str, object] | None = None
+
+
 class ERPError(Exception):
     """The ERP rejected or failed to process a request."""
 
@@ -99,3 +128,7 @@ class ERPUnavailableError(ERPError):
 
 class ERPAuthenticationError(ERPError):
     """The ERP rejected the configured credentials."""
+
+
+class LLMError(Exception):
+    """The language model provider failed to produce a reply."""
