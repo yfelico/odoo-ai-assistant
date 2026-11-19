@@ -12,6 +12,7 @@ uv run fastapi dev app/main.py         # API en http://localhost:8000 fuera de D
 uv run pytest -m "not integration and not evals"   # pruebas rápidas
 uv run pytest tests/unit/test_tools.py::test_name  # una sola prueba
 uv run pytest -m integration           # requiere Odoo levantado
+./scripts/test_odoo_module.sh          # pruebas del módulo de Odoo, en una base temporal
 node --test "odoo_addons/**/*.test.mjs"  # pruebas JS del panel (Node 22)
 uv run pytest -m evals                 # requiere Odoo y una clave de LLM
 uv run ruff check . --fix && uv run ruff format .

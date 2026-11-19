@@ -3,6 +3,7 @@ name = "odoo-ai-assistant"
 version = "0.1.0"
 description = "AI agent that answers business questions over Odoo 18 and drafts quotations with human confirmation."
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "fastapi[standard]>=0.115",

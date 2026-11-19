@@ -133,7 +133,9 @@ odoo-ai-assistant/
 │       ├── models/res_config_settings.py  # URL y token de la API en Ajustes
 │       ├── static/src/assistant_systray/  # componente OWL, plantilla, estilos y markdown.js
 │       ├── i18n/es.po
-│       └── tests/
+│       ├── tests/
+│       ├── README.rst       # descripción en la ficha del módulo
+│       └── LICENSE          # LGPL-3
 ├── scripts/
 │   ├── init_odoo.sh         # crea la base demo y el usuario técnico, e instala el módulo
 │   ├── odoo_create_tech_user.py  # se ejecuta dentro de `odoo shell`
@@ -152,6 +154,7 @@ odoo-ai-assistant/
 │       ├── runner.py        # ejecuta un caso contra el agente real
 │       └── report.py        # informe comparativo por modelo
 ├── docs/
+│   ├── demo.gif             # demo del README
 │   └── evals-report.md      # informe de evals de referencia
 ├── .github/workflows/ci.yml
 ├── Dockerfile               # imagen de la API
@@ -160,6 +163,7 @@ odoo-ai-assistant/
 ├── .env.example
 ├── CLAUDE.md
 ├── SPEC.md
+├── LICENSE                  # MIT (todo salvo odoo_addons/)
 └── README.md
 ```
 
