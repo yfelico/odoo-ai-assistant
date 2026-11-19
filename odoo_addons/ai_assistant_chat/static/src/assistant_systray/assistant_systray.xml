@@ -1,5 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <templates xml:space="preserve">
+    <!-- Text segments of a Markdown line; t-esc only, so nothing is parsed as HTML. -->
+    <t t-name="ai_assistant_chat.MarkdownSegments">
+        <t t-foreach="segments" t-as="segment" t-key="segment_index">
+            <strong t-if="segment.bold" t-esc="segment.text"/>
+            <t t-else="" t-esc="segment.text"/>
+        </t>
+    </t>
+
     <t t-name="ai_assistant_chat.AssistantSystray">
         <Dropdown t-if="state.visible" state="dropdown" position="'bottom-end'"
                   menuClass="'o_ai_assistant_panel p-0'">
@@ -19,7 +27,33 @@
                         </p>
                         <t t-foreach="state.messages" t-as="message" t-key="message.id">
                             <div t-attf-class="o_ai_assistant_message o_ai_assistant_{{ message.role }} mb-2">
-                                <div class="o_ai_assistant_text" t-esc="message.text"/>
+                                <div t-if="message.blocks" class="o_ai_assistant_markdown">
+                                    <t t-foreach="message.blocks" t-as="block" t-key="block_index">
+                                        <p t-if="block.type === 'paragraph'">
+                                            <t t-foreach="block.lines" t-as="line" t-key="line_index">
+                                                <br t-if="line_index"/>
+                                                <t t-call="ai_assistant_chat.MarkdownSegments">
+                                                    <t t-set="segments" t-value="line"/>
+                                                </t>
+                                            </t>
+                                        </p>
+                                        <ol t-elif="block.ordered">
+                                            <li t-foreach="block.items" t-as="item" t-key="item_index">
+                                                <t t-call="ai_assistant_chat.MarkdownSegments">
+                                                    <t t-set="segments" t-value="item"/>
+                                                </t>
+                                            </li>
+                                        </ol>
+                                        <ul t-else="">
+                                            <li t-foreach="block.items" t-as="item" t-key="item_index">
+                                                <t t-call="ai_assistant_chat.MarkdownSegments">
+                                                    <t t-set="segments" t-value="item"/>
+                                                </t>
+                                            </li>
+                                        </ul>
+                                    </t>
+                                </div>
+                                <div t-else="" class="o_ai_assistant_text" t-esc="message.text"/>
                                 <div t-if="message.tools and message.tools.length" class="text-muted small mt-1">
                                     Tools: <t t-esc="message.tools.join(', ')"/>
                                 </div>

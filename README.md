@@ -56,6 +56,7 @@ uv run fastapi dev app/main.py                     # API outside Docker
 uv run pytest -m "not integration and not evals"   # fast tests
 uv run pytest -m integration                       # requires Odoo running
 ./scripts/test_odoo_module.sh                      # Odoo module tests, in a throwaway database
+node --test "odoo_addons/**/*.test.mjs"            # JS unit tests of the chat panel (Node 22)
 uv run pytest -m evals                             # requires Odoo and LLM_API_KEY; calls the real model
 uv run ruff check . --fix && uv run ruff format .
 uv run mypy app
@@ -73,4 +74,4 @@ EVAL_MODELS=gemini/gemini-3.5-flash-lite,gemini/gemini-3.1-flash-lite uv run pyt
 
 Each run writes a report to `tests/evals/reports/` (accuracy overall and per category, mean and p95 latency, tokens and estimated cost per model). `EVAL_REQUESTS_PER_MINUTE` (default 5) keeps each model under free-tier quotas; time spent waiting for quota is not counted as latency. The latest reference report is in [docs/evals-report.md](docs/evals-report.md).
 
-CI (GitHub Actions) runs ruff, mypy and the fast tests on every push; integration tests and evals need Odoo and an LLM key, so they run locally.
+CI (GitHub Actions) runs ruff, mypy, the fast tests and the JS unit tests on every push; integration tests and evals need Odoo and an LLM key, so they run locally.

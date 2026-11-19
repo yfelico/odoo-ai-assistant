@@ -97,7 +97,7 @@ Los borradores se guardan en memoria del proceso (un diccionario con caducidad, 
 | Integración | Que el adaptador XML-RPC traduzca bien los datos reales | Odoo en Docker, `pytest -m integration` |
 | Evals | Corrección de punta a punta | `tests/evals/cases.yaml`: pregunta, herramientas esperadas y prohibidas, y respuesta esperada. Las cifras no se escriben a mano: cada expectativa nombra un *hecho* que se calcula en vivo desde Odoo, porque los datos demo dependen de la fecha de instalación. La corrección es determinista (sin LLM como juez) y todo caso comprueba además que no se creó ningún pedido. `pytest -m evals` compara los modelos de `EVAL_MODELS` (por defecto `LLM_MODEL`), respeta la cuota con `EVAL_REQUESTS_PER_MINUTE` y genera en `tests/evals/reports/` (sin versionar) un informe con el porcentaje de aciertos (total y por categoría), la latencia media y p95, los tokens y el costo estimado por modelo. El informe de referencia se versiona en `docs/evals-report.md` |
 
-En CI (GitHub Actions, en cada push y pull request; `.github/workflows/ci.yml`): `ruff check`, `ruff format --check`, `mypy app` y `pytest -m "not integration and not evals"`.
+En CI (GitHub Actions, en cada push y pull request; `.github/workflows/ci.yml`): `ruff check`, `ruff format --check`, `mypy app`, `pytest -m "not integration and not evals"` y las pruebas JS del módulo (`node --test`).
 
 Cada respuesta del modelo trae su uso (tokens de entrada y salida, y costo estimado con la lista de precios pública de LiteLLM, vacío si el modelo no tiene precio). El agente suma el uso del turno y lo registra en el log, sin texto de la conversación.
 
@@ -131,7 +131,7 @@ odoo-ai-assistant/
 │   └── ai_assistant_chat/   # chat OWL en la barra superior de Odoo (LGPL-3)
 │       ├── controllers/main.py  # proxy autenticado hacia la API
 │       ├── models/res_config_settings.py  # URL y token de la API en Ajustes
-│       ├── static/src/assistant_systray/  # componente OWL, plantilla y estilos
+│       ├── static/src/assistant_systray/  # componente OWL, plantilla, estilos y markdown.js
 │       ├── i18n/es.po
 │       └── tests/
 ├── scripts/
@@ -208,8 +208,8 @@ Decisiones de la fase:
 - **Solo usuarios de Ventas** (`sales_team.group_sale_salesman`): el icono no se muestra al resto y las rutas responden con un error de acceso.
 - **Ajustes:** URL (`ai_assistant_chat.api_url`, por defecto `http://api:8000`) y token (`ai_assistant_chat.api_token`) en Ajustes generales, bloque Integraciones.
 - **Quién confirma:** el proxy envía el id del usuario de Odoo que pulsa Confirmar; va a la auditoría y a la nota del chatter.
-- **Respuestas como texto plano:** el componente nunca interpreta como HTML lo que devuelve el modelo.
-- **Pruebas:** las del servidor (proxy, permisos, errores, Ajustes y compilación de estilos) se ejecutan dentro de Odoo con `scripts/test_odoo_module.sh`. El componente OWL se verifica a mano: las pruebas JS de Odoo necesitan un navegador en el contenedor, que la imagen `odoo:18` no trae.
+- **Markdown mínimo y seguro:** las respuestas admiten negritas, listas y títulos. `markdown.js` las convierte en datos (bloques y fragmentos de texto) que la plantilla pinta con `t-esc`: el componente nunca interpreta como HTML lo que devuelve el modelo.
+- **Pruebas:** las del servidor (proxy, permisos, errores, Ajustes y compilación de estilos) se ejecutan dentro de Odoo con `scripts/test_odoo_module.sh`. El parser de Markdown, en JavaScript puro, se prueba con Node (`node --test "odoo_addons/**/*.test.mjs"`, también en CI). El componente OWL se verifica a mano: las pruebas JS de Odoo necesitan un navegador en el contenedor, que la imagen `odoo:18` no trae.
 
 ### Fase 6: Presentación
 

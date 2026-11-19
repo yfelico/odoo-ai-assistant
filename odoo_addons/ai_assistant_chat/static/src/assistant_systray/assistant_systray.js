@@ -7,13 +7,15 @@ import { registry } from "@web/core/registry";
 import { user } from "@web/core/user";
 import { formatFloat } from "@web/core/utils/numbers";
 import { useService } from "@web/core/utils/hooks";
+import { parseMarkdown } from "@ai_assistant_chat/assistant_systray/markdown";
 
 const SALES_GROUP = "sales_team.group_sale_salesman";
 
 /**
  * Chat with the AI assistant from the top bar. Every request goes through the Odoo
  * server (/ai_assistant_chat/*), which forwards it to the assistant API.
- * Answers are rendered as plain text (t-esc): model output is never interpreted as HTML.
+ * Answers support minimal Markdown (markdown.js), rendered from plain data with t-esc:
+ * model output is never interpreted as HTML.
  */
 export class AssistantSystray extends Component {
     static template = "ai_assistant_chat.AssistantSystray";
@@ -72,6 +74,7 @@ export class AssistantSystray extends Component {
             });
             this.state.conversationId = reply.conversation_id;
             this.addMessage("assistant", reply.answer, {
+                blocks: parseMarkdown(reply.answer),
                 tools: reply.tool_calls.map((call) => call.name),
             });
             if (reply.pending_draft) {
@@ -87,7 +90,7 @@ export class AssistantSystray extends Component {
 
     async confirmDraft() {
         const draft = this.state.draft;
-        if (!draft || draft.status !== "pending") {
+        if (draft?.status !== "pending") {
             return;
         }
         draft.status = "confirming";
@@ -122,7 +125,8 @@ export class AssistantSystray extends Component {
     onKeydown(ev) {
         if (ev.key === "Enter" && !ev.shiftKey) {
             ev.preventDefault();
-            this.send();
+            // send() handles its own errors.
+            void this.send();
         }
     }
 }

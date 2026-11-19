@@ -15,6 +15,25 @@
         overflow-wrap: anywhere;
     }
 
+    .o_ai_assistant_markdown {
+        overflow-wrap: anywhere;
+
+        p,
+        ul,
+        ol {
+            margin-bottom: 0.4rem;
+        }
+
+        ul,
+        ol {
+            padding-left: 1.2rem;
+        }
+
+        > :last-child {
+            margin-bottom: 0;
+        }
+    }
+
     .o_ai_assistant_message {
         padding: 0.4rem 0.6rem;
         border-radius: 0.5rem;

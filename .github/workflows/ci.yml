@@ -42,3 +42,11 @@ jobs:
       # Integration tests and evals need Odoo and an LLM key; they run locally.
       - name: Fast tests
         run: uv run pytest -m "not integration and not evals"
+
+      # Pure-JS parts of the Odoo module (no Odoo or browser needed).
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: "22"
+
+      - name: JS unit tests
+        run: node --test "odoo_addons/**/*.test.mjs"
