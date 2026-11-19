@@ -1,0 +1,41 @@
+.o_ai_assistant_panel {
+    // Separate max-* properties: Odoo's Sass compiler fails on min() with mixed units.
+    width: 420px;
+    max-width: 95vw;
+    height: 600px;
+    max-height: 75vh;
+    overflow: hidden;
+
+    .o_ai_assistant_messages {
+        overflow-y: auto;
+    }
+
+    .o_ai_assistant_text {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+    }
+
+    .o_ai_assistant_message {
+        padding: 0.4rem 0.6rem;
+        border-radius: 0.5rem;
+        max-width: 90%;
+    }
+
+    .o_ai_assistant_user {
+        margin-left: auto;
+        background-color: $o-gray-200;
+    }
+
+    .o_ai_assistant_assistant {
+        background-color: $o-gray-100;
+    }
+
+    .o_ai_assistant_error {
+        color: $danger;
+        background-color: rgba($danger, 0.08);
+    }
+
+    textarea {
+        resize: none;
+    }
+}

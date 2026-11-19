@@ -1,0 +1,201 @@
+# Spanish translation of ai_assistant_chat.
+# This file contains the translation of the following modules:
+# 	* ai_assistant_chat
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Odoo Server 18.0-20261112\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-11-19 03:58+0000\n"
+"PO-Revision-Date: 2026-11-19 03:58+0000\n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Language: es\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: \n"
+"Plural-Forms: \n"
+
+#. module: ai_assistant_chat
+#. odoo-javascript
+#: code:addons/ai_assistant_chat/static/src/assistant_systray/assistant_systray.xml:0
+#: model_terms:ir.ui.view,arch_db:ai_assistant_chat.res_config_settings_view_form
+msgid "AI Assistant"
+msgstr "Asistente de IA"
+
+#. module: ai_assistant_chat
+#. odoo-javascript
+#: code:addons/ai_assistant_chat/static/src/assistant_systray/assistant_systray.xml:0
+msgid "Ask about sales, stock, invoices or orders, or ask for a quotation."
+msgstr "Pregunta por ventas, stock, facturas o pedidos, o pide un presupuesto."
+
+#. module: ai_assistant_chat
+#. odoo-javascript
+#: code:addons/ai_assistant_chat/static/src/assistant_systray/assistant_systray.xml:0
+msgid "Ask the assistant..."
+msgstr "Pregunta al asistente..."
+
+#. module: ai_assistant_chat
+#: model:ir.model.fields,field_description:ai_assistant_chat.field_res_config_settings__ai_assistant_api_url
+msgid "Assistant API URL"
+msgstr "URL de la API del asistente"
+
+#. module: ai_assistant_chat
+#: model:ir.model.fields,field_description:ai_assistant_chat.field_res_config_settings__ai_assistant_api_token
+msgid "Assistant API token"
+msgstr "Token de la API del asistente"
+
+#. module: ai_assistant_chat
+#: model:ir.model.fields,help:ai_assistant_chat.field_res_config_settings__ai_assistant_api_url
+msgid "Base URL of the AI assistant API, as reached from the Odoo server."
+msgstr "URL base de la API del asistente de IA, tal como la alcanza el servidor de Odoo."
+
+#. module: ai_assistant_chat
+#: model:ir.model.fields,help:ai_assistant_chat.field_res_config_settings__ai_assistant_api_token
+msgid ""
+"Bearer token expected by the API (API_TOKEN). Leave empty if the API has "
+"none."
+msgstr "Token Bearer que exige la API (API_TOKEN). Déjalo vacío si la API no tiene."
+
+#. module: ai_assistant_chat
+#. odoo-javascript
+#: code:addons/ai_assistant_chat/static/src/assistant_systray/assistant_systray.xml:0
+msgid "Close"
+msgstr "Cerrar"
+
+#. module: ai_assistant_chat
+#: model:ir.model,name:ai_assistant_chat.model_res_config_settings
+msgid "Config Settings"
+msgstr "Ajustes de configuración"
+
+#. module: ai_assistant_chat
+#. odoo-javascript
+#: code:addons/ai_assistant_chat/static/src/assistant_systray/assistant_systray.xml:0
+msgid "Confirm"
+msgstr "Confirmar"
+
+#. module: ai_assistant_chat
+#: model_terms:ir.ui.view,arch_db:ai_assistant_chat.res_config_settings_view_form
+msgid "Connection to the AI assistant API used by the chat in the top bar"
+msgstr "Conexión con la API del asistente de IA que usa el chat de la barra superior"
+
+#. module: ai_assistant_chat
+#. odoo-javascript
+#: code:addons/ai_assistant_chat/static/src/assistant_systray/assistant_systray.xml:0
+msgid "Discard"
+msgstr "Descartar"
+
+#. module: ai_assistant_chat
+#. odoo-javascript
+#: code:addons/ai_assistant_chat/static/src/assistant_systray/assistant_systray.xml:0
+msgid "Estimated total (untaxed):"
+msgstr "Total estimado (sin impuestos):"
+
+#. module: ai_assistant_chat
+#. odoo-javascript
+#: code:addons/ai_assistant_chat/static/src/assistant_systray/assistant_systray.xml:0
+msgid "New conversation"
+msgstr "Nueva conversación"
+
+#. module: ai_assistant_chat
+#. odoo-python
+#: code:addons/ai_assistant_chat/controllers/main.py:0
+msgid "Odoo cannot reach the assistant. Check the API URL in Settings."
+msgstr "Odoo no puede conectar con el asistente. Revisa la URL de la API en Ajustes."
+
+#. module: ai_assistant_chat
+#. odoo-python
+#: code:addons/ai_assistant_chat/controllers/main.py:0
+msgid "Odoo rejected the quotation. The draft is kept: try again."
+msgstr "Odoo rechazó el presupuesto. El borrador se conserva: inténtalo de nuevo."
+
+#. module: ai_assistant_chat
+#. odoo-python
+#: code:addons/ai_assistant_chat/controllers/main.py:0
+msgid "Only sales users can use the AI assistant."
+msgstr "Solo los usuarios de Ventas pueden usar el asistente de IA."
+
+#. module: ai_assistant_chat
+#. odoo-javascript
+#: code:addons/ai_assistant_chat/static/src/assistant_systray/assistant_systray.xml:0
+msgid "Open quotation"
+msgstr "Abrir presupuesto"
+
+#. module: ai_assistant_chat
+#. odoo-javascript
+#: code:addons/ai_assistant_chat/static/src/assistant_systray/assistant_systray.xml:0
+msgid "Quotation created:"
+msgstr "Presupuesto creado:"
+
+#. module: ai_assistant_chat
+#. odoo-javascript
+#: code:addons/ai_assistant_chat/static/src/assistant_systray/assistant_systray.xml:0
+msgid "Quotation draft for"
+msgstr "Borrador de presupuesto para"
+
+#. module: ai_assistant_chat
+#. odoo-javascript
+#: code:addons/ai_assistant_chat/static/src/assistant_systray/assistant_systray.xml:0
+msgid "Send"
+msgstr "Enviar"
+
+#. module: ai_assistant_chat
+#. odoo-javascript
+#: code:addons/ai_assistant_chat/static/src/assistant_systray/assistant_systray.js:0
+msgid "Something went wrong. Try again."
+msgstr "Algo salió mal. Inténtalo de nuevo."
+
+#. module: ai_assistant_chat
+#. odoo-python
+#: code:addons/ai_assistant_chat/controllers/main.py:0
+msgid "The assistant had an unexpected error. Try again later."
+msgstr "El asistente tuvo un error inesperado. Inténtalo más tarde."
+
+#. module: ai_assistant_chat
+#. odoo-python
+#: code:addons/ai_assistant_chat/controllers/main.py:0
+msgid "The assistant is not available right now. Try again in a few seconds."
+msgstr "El asistente no está disponible ahora mismo. Inténtalo en unos segundos."
+
+#. module: ai_assistant_chat
+#. odoo-python
+#: code:addons/ai_assistant_chat/controllers/main.py:0
+msgid ""
+"The assistant rejected Odoo's credentials. Check the API token in Settings."
+msgstr "El asistente rechazó las credenciales de Odoo. Revisa el token de la API en Ajustes."
+
+#. module: ai_assistant_chat
+#. odoo-python
+#: code:addons/ai_assistant_chat/controllers/main.py:0
+msgid "The request could not be processed. Try rephrasing it."
+msgstr "No se pudo procesar la petición. Prueba a formularla de otra manera."
+
+#. module: ai_assistant_chat
+#. odoo-javascript
+#: code:addons/ai_assistant_chat/static/src/assistant_systray/assistant_systray.xml:0
+msgid "Thinking..."
+msgstr "Pensando..."
+
+#. module: ai_assistant_chat
+#. odoo-python
+#: code:addons/ai_assistant_chat/controllers/main.py:0
+msgid ""
+"This draft is no longer available. Ask the assistant to prepare it again."
+msgstr "Este borrador ya no está disponible. Pide al asistente que lo prepare de nuevo."
+
+#. module: ai_assistant_chat
+#. odoo-javascript
+#: code:addons/ai_assistant_chat/static/src/assistant_systray/assistant_systray.xml:0
+msgid "Tools:"
+msgstr "Herramientas:"
+
+#. module: ai_assistant_chat
+#. odoo-javascript
+#: code:addons/ai_assistant_chat/static/src/assistant_systray/assistant_systray.xml:0
+msgid "Total with taxes:"
+msgstr "Total con impuestos:"
+
+#. module: ai_assistant_chat
+#: model_terms:ir.ui.view,arch_db:ai_assistant_chat.res_config_settings_view_form
+msgid "http://api:8000"
+msgstr "http://api:8000"

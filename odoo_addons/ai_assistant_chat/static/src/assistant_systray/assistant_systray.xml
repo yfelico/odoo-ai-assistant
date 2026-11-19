@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <t t-name="ai_assistant_chat.AssistantSystray">
+        <Dropdown t-if="state.visible" state="dropdown" position="'bottom-end'"
+                  menuClass="'o_ai_assistant_panel p-0'">
+            <button class="o_ai_assistant_toggler" title="AI Assistant" aria-label="AI Assistant">
+                <i class="fa fa-magic" role="img"/>
+            </button>
+            <t t-set-slot="content">
+                <div class="d-flex flex-column h-100">
+                    <div class="d-flex align-items-center justify-content-between px-3 py-2 border-bottom">
+                        <strong>AI Assistant</strong>
+                        <button class="btn btn-link btn-sm" t-on-click="newConversation"
+                                t-att-disabled="state.busy">New conversation</button>
+                    </div>
+                    <div class="o_ai_assistant_messages flex-grow-1 px-3 py-2" t-ref="messages">
+                        <p t-if="!state.messages.length" class="text-muted small mb-0">
+                            Ask about sales, stock, invoices or orders, or ask for a quotation.
+                        </p>
+                        <t t-foreach="state.messages" t-as="message" t-key="message.id">
+                            <div t-attf-class="o_ai_assistant_message o_ai_assistant_{{ message.role }} mb-2">
+                                <div class="o_ai_assistant_text" t-esc="message.text"/>
+                                <div t-if="message.tools and message.tools.length" class="text-muted small mt-1">
+                                    Tools: <t t-esc="message.tools.join(', ')"/>
+                                </div>
+                            </div>
+                        </t>
+                        <div t-if="state.busy" class="text-muted small">
+                            <i class="fa fa-circle-o-notch fa-spin me-1"/>Thinking...
+                        </div>
+                    </div>
+                    <t t-set="draft" t-value="state.draft"/>
+                    <div t-if="draft" class="o_ai_assistant_draft border-top px-3 py-2">
+                        <div class="fw-bold mb-1">
+                            Quotation draft for <t t-esc="draft.partner_name"/>
+                        </div>
+                        <ul class="list-unstyled small mb-1">
+                            <li t-foreach="draft.lines" t-as="line" t-key="line_index"
+                                t-esc="`${line.quantity} × ${line.product_name}: ${formatAmount(line.subtotal)}`"/>
+                        </ul>
+                        <div class="small mb-2">
+                            Estimated total (untaxed): <strong t-esc="formatAmount(draft.estimated_total_untaxed)"/>
+                        </div>
+                        <div t-if="draft.error" class="text-danger small mb-2" t-esc="draft.error"/>
+                        <t t-if="draft.status === 'created'">
+                            <div class="text-success small">
+                                <span>Quotation created:</span> <strong t-esc="draft.created.name"/>
+                            </div>
+                            <div class="small mb-2">
+                                <span>Total with taxes:</span> <t t-esc="formatAmount(draft.created.amount_total)"/>
+                            </div>
+                            <button class="btn btn-secondary btn-sm me-2"
+                                    t-on-click="() => this.openQuotation(draft.created.quotation_id)">Open quotation</button>
+                            <button class="btn btn-link btn-sm" t-on-click="discardDraft">Close</button>
+                        </t>
+                        <t t-else="">
+                            <button class="btn btn-primary btn-sm me-2" t-on-click="confirmDraft"
+                                    t-att-disabled="draft.status === 'confirming'">Confirm</button>
+                            <button class="btn btn-link btn-sm" t-on-click="discardDraft"
+                                    t-att-disabled="draft.status === 'confirming'">Discard</button>
+                        </t>
+                    </div>
+                    <div class="border-top p-2 d-flex gap-2">
+                        <textarea class="form-control" rows="2" t-ref="input" t-model="state.input"
+                                  t-on-keydown="onKeydown" t-att-disabled="state.busy"
+                                  placeholder="Ask the assistant..." maxlength="4000"/>
+                        <button class="btn btn-primary" t-on-click="send"
+                                t-att-disabled="state.busy or !state.input.trim()">Send</button>
+                    </div>
+                </div>
+            </t>
+        </Dropdown>
+    </t>
+</templates>

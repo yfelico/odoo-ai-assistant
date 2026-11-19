@@ -47,6 +47,18 @@ max-complexity = 10
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "PLR2004"]
+# Odoo conventions: __init__ imports register submodules, the manifest is a bare
+# dict, and Odoo tests are unittest-based.
+"odoo_addons/**/__init__.py" = ["F401"]
+"odoo_addons/**/__manifest__.py" = ["B018"]
+"odoo_addons/**/tests/**" = ["PT009", "PLR2004"]
+
+[tool.ruff.lint.isort]
+# Odoo convention: odoo imports in their own section, after third-party ones.
+section-order = ["future", "standard-library", "third-party", "odoo", "first-party", "local-folder"]
+
+[tool.ruff.lint.isort.sections]
+odoo = ["odoo"]
 
 [tool.mypy]
 python_version = "3.12"

@@ -28,6 +28,8 @@ services:
       - "${ODOO_PORT:-8069}:8069"
     volumes:
       - odoo-data:/var/lib/odoo
+      # Custom modules (ai_assistant_chat); /mnt/extra-addons is in the image's addons path.
+      - ./odoo_addons:/mnt/extra-addons:ro
 
   api:
     build: .

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <!-- Inside docker compose the API is reached by its service name. -->
+    <record id="param_api_url" model="ir.config_parameter">
+        <field name="key">ai_assistant_chat.api_url</field>
+        <field name="value">http://api:8000</field>
+    </record>
+</odoo>

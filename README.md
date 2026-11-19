@@ -13,9 +13,15 @@ docker compose up -d          # Odoo (http://localhost:8069), PostgreSQL and the
 curl http://localhost:8000/health
 ```
 
-`init_odoo.sh` writes `ODOO_API_KEY` into `.env`. Running it again rotates the key.
+`init_odoo.sh` writes `ODOO_API_KEY` into `.env` (running it again rotates the key), generates `API_TOKEN` if it is empty, and installs the `ai_assistant_chat` Odoo module paired with the API.
 
-Open http://localhost:8000/ to chat with the assistant (it asks for `API_TOKEN` once per tab when the API has one), or call the API directly:
+### Chat inside Odoo
+
+Log in to Odoo (`admin` / `admin` on the demo database) and click the magic-wand icon in the top bar. The chat panel shows the tools the assistant used and, for quotations, a draft card with a **Confirm** button; the created quotation can be opened from the panel. Only users in the Sales group see the icon.
+
+The panel talks to Odoo, and the Odoo server forwards each request to the API with the token, so the token never reaches the browser. The API URL and token are in **Settings > General Settings > Integrations > AI Assistant**.
+
+You can also chat at http://localhost:8000/ (it asks for `API_TOKEN` once per tab) or call the API directly:
 
 ```bash
 curl -X POST http://localhost:8000/chat -H "Content-Type: application/json" \
@@ -37,6 +43,8 @@ If port 8069 is already taken (e.g. by another Odoo), set `ODOO_PORT` and `ODOO_
 - Conversation histories and quotation drafts live in the API process memory: they are lost on restart and not shared between workers.
 - A draft's total is an estimate at list price, without taxes; Odoo applies the customer's pricelist and taxes when the quotation is created.
 - If Odoo times out while creating a quotation, it may have been created anyway; retrying the confirmation could then create a duplicate.
+- Quotations confirmed from Odoo are created by the technical user; the chatter note and the audit trail record the id of the Odoo user who confirmed.
+- The chat panel keeps the conversation only while the page is open; reloading Odoo starts a new one.
 - Integration tests and the prompt-injection eval create real orders in the demo database and cancel them afterwards (the technical user cannot delete them).
 - Estimated costs use LiteLLM's public list prices; free tiers cost nothing, and prices change over time.
 
@@ -47,6 +55,7 @@ uv sync
 uv run fastapi dev app/main.py                     # API outside Docker
 uv run pytest -m "not integration and not evals"   # fast tests
 uv run pytest -m integration                       # requires Odoo running
+./scripts/test_odoo_module.sh                      # Odoo module tests, in a throwaway database
 uv run pytest -m evals                             # requires Odoo and LLM_API_KEY; calls the real model
 uv run ruff check . --fix && uv run ruff format .
 uv run mypy app

@@ -85,7 +85,7 @@ Los borradores se guardan en memoria del proceso (un diccionario con caducidad, 
 - **Prompt injection:** los textos que vienen de Odoo (notas, descripciones, nombres) se pasan al modelo como datos dentro de etiquetas `<odoo_data>`. El system prompt indica que nunca siga instrucciones que aparezcan ahí.
 - **Límites del bucle:** `AGENT_MAX_ITERATIONS` (por defecto 6) y `AGENT_TIMEOUT_SECONDS` (por defecto 60).
 - **Auditoría:** cada llamada a una herramienta se registra en el logger `app.audit` (una línea JSON por evento) con conversación, herramienta, argumentos, resultado y duración, sin datos personales: los ids, números y booleanos se registran tal cual y los textos libres se sustituyen por su longitud. Cada confirmación registra el borrador, el cliente (id), el presupuesto creado, el resultado y, si se conoce, el usuario de Odoo que confirmó (`confirmed_by_user_id`). El presupuesto creado lleva una nota interna en el chatter: "Creado por el asistente de IA tras confirmación del usuario", seguida de `#<id>` del usuario de Odoo cuando se conoce; para publicarla, el usuario técnico necesita un email (`ai-assistant@example.com`).
-- **Acceso a la API:** con `API_TOKEN` definido, solo quien tiene el token puede chatear o confirmar.
+- **Acceso a la API:** con `API_TOKEN` definido, solo quien tiene el token puede chatear o confirmar. `scripts/init_odoo.sh` lo genera si está vacío y lo guarda en Odoo, que lo usa desde el servidor: nunca llega al navegador.
 - **Datos:** solo la base de demostración. Nunca datos reales en el repositorio, las pruebas ni las evals.
 
 ## 7. Calidad
@@ -128,10 +128,17 @@ odoo-ai-assistant/
 │   ├── logging_config.py    # logs de la app (y auditoría) a nivel INFO
 │   └── main.py
 ├── odoo_addons/
-│   └── ai_assistant_chat/   # fase 5: chat OWL en la barra superior de Odoo
+│   └── ai_assistant_chat/   # chat OWL en la barra superior de Odoo (LGPL-3)
+│       ├── controllers/main.py  # proxy autenticado hacia la API
+│       ├── models/res_config_settings.py  # URL y token de la API en Ajustes
+│       ├── static/src/assistant_systray/  # componente OWL, plantilla y estilos
+│       ├── i18n/es.po
+│       └── tests/
 ├── scripts/
-│   ├── init_odoo.sh         # crea la base demo y el usuario técnico
-│   └── odoo_create_tech_user.py  # se ejecuta dentro de `odoo shell`
+│   ├── init_odoo.sh         # crea la base demo y el usuario técnico, e instala el módulo
+│   ├── odoo_create_tech_user.py  # se ejecuta dentro de `odoo shell`
+│   ├── odoo_configure_chat.py    # guarda API_TOKEN en Odoo (dentro de `odoo shell`)
+│   └── test_odoo_module.sh  # pruebas del módulo en una base temporal
 ├── tests/
 │   ├── contract/            # contrato de ERPGateway (FakeERP y Odoo)
 │   ├── unit/
@@ -194,6 +201,15 @@ Cada fase termina con algo que funciona. **No se empieza una fase hasta cerrar l
 - Módulo `ai_assistant_chat` (Odoo 18, `version` del manifest `18.0.1.0.0`, licencia LGPL-3).
 - Componente OWL en la barra superior que abre un panel de chat y llama a la API.
 - La URL de la API se configura en Ajustes, como parámetro del sistema.
+
+Decisiones de la fase:
+
+- **Odoo hace de proxy.** El panel llama a rutas del propio Odoo (`/ai_assistant_chat/chat` y `/ai_assistant_chat/confirm`, `auth="user"`), y el servidor de Odoo reenvía la petición a la API con su token. No hace falta CORS, la API puede quedar en la red interna de Docker y el token no llega al navegador. Los errores de la API (401, 404, 422, 502, 503, API caída) se traducen a mensajes legibles.
+- **Solo usuarios de Ventas** (`sales_team.group_sale_salesman`): el icono no se muestra al resto y las rutas responden con un error de acceso.
+- **Ajustes:** URL (`ai_assistant_chat.api_url`, por defecto `http://api:8000`) y token (`ai_assistant_chat.api_token`) en Ajustes generales, bloque Integraciones.
+- **Quién confirma:** el proxy envía el id del usuario de Odoo que pulsa Confirmar; va a la auditoría y a la nota del chatter.
+- **Respuestas como texto plano:** el componente nunca interpreta como HTML lo que devuelve el modelo.
+- **Pruebas:** las del servidor (proxy, permisos, errores, Ajustes y compilación de estilos) se ejecutan dentro de Odoo con `scripts/test_odoo_module.sh`. El componente OWL se verifica a mano: las pruebas JS de Odoo necesitan un navegador en el contenedor, que la imagen `odoo:18` no trae.
 
 ### Fase 6: Presentación
 
