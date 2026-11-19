@@ -275,31 +275,38 @@ def _failure_message(tool: str, err: Exception) -> str:
     return str(err)
 
 
-def create_quotation(draft_id: str, drafts: DraftStore, gateway: ERPGateway) -> CreatedQuotation:
+def create_quotation(
+    draft_id: str, drafts: DraftStore, gateway: ERPGateway, confirmed_by: int | None = None
+) -> CreatedQuotation:
     """Create the confirmed draft in the ERP. Only ``POST /confirm`` calls this.
 
     The draft is consumed so it cannot be confirmed twice; if the ERP fails it is
-    restored and the user can retry.
+    restored and the user can retry. ``confirmed_by`` is the Odoo user id that
+    confirmed it, when known; it goes to the chatter note and the audit trail.
     """
     draft = drafts.take(draft_id)
+    note = QUOTATION_NOTE if confirmed_by is None else f"{QUOTATION_NOTE} #{confirmed_by}"
     started = time.monotonic()
     try:
-        created = gateway.create_quotation(draft.partner_id, draft.lines, QUOTATION_NOTE)
+        created = gateway.create_quotation(draft.partner_id, draft.lines, note)
     except ERPError:
         drafts.restore(draft)
-        _audit_creation(draft, None, started)
+        _audit_creation(draft, None, started, confirmed_by)
         raise
-    _audit_creation(draft, created.id, started)
+    _audit_creation(draft, created.id, started, confirmed_by)
     return created
 
 
-def _audit_creation(draft: QuotationDraft, quotation_id: int | None, started: float) -> None:
+def _audit_creation(
+    draft: QuotationDraft, quotation_id: int | None, started: float, confirmed_by: int | None
+) -> None:
     audit.quotation_created(
         draft_id=draft.id,
         partner_id=draft.partner_id,
         quotation_id=quotation_id,
         outcome="error" if quotation_id is None else "ok",
         duration=time.monotonic() - started,
+        confirmed_by_user_id=confirmed_by,
     )
 
 

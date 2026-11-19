@@ -51,24 +51,28 @@ def tool_call(
     )
 
 
-def quotation_created(
+# Keyword-only fields of one audit event.
+def quotation_created(  # noqa: PLR0913
     *,
     draft_id: str,
     partner_id: int,
     quotation_id: int | None,
     outcome: Outcome,
     duration: float,
+    confirmed_by_user_id: int | None = None,
 ) -> None:
-    _emit(
-        {
-            "event": "quotation_created",
-            "draft_id": draft_id,
-            "partner_id": partner_id,
-            "quotation_id": quotation_id,
-            "outcome": outcome,
-            "duration_ms": round(duration * 1000, 1),
-        }
-    )
+    event: dict[str, object] = {
+        "event": "quotation_created",
+        "draft_id": draft_id,
+        "partner_id": partner_id,
+        "quotation_id": quotation_id,
+        "outcome": outcome,
+        "duration_ms": round(duration * 1000, 1),
+    }
+    # Only callers that know the confirming Odoo user (the Odoo chat) send it.
+    if confirmed_by_user_id is not None:
+        event["confirmed_by_user_id"] = confirmed_by_user_id
+    _emit(event)
 
 
 def _emit(event: dict[str, object]) -> None:

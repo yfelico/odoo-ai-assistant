@@ -1,10 +1,11 @@
+import hmac
 import json
 import logging
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, JsonValue
 
@@ -61,6 +62,30 @@ def get_agent() -> Agent:
 @lru_cache
 def get_conversation_store() -> ConversationStore:
     return ConversationStore(ttl_seconds=get_settings().conversation_ttl_seconds)
+
+
+def require_api_token(
+    settings: Annotated[Settings, Depends(get_settings)],
+    authorization: Annotated[str | None, Header()] = None,
+) -> None:
+    """Checks the bearer token when API_TOKEN is configured; otherwise the API is open."""
+    if settings.api_token is None or not settings.api_token.get_secret_value():
+        return
+    scheme, _, token = (authorization or "").partition(" ")
+    expected = settings.api_token.get_secret_value()
+    # Constant-time comparison, so response timing does not leak the token.
+    if scheme.lower() != "bearer" or not hmac.compare_digest(token.encode(), expected.encode()):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or invalid API token.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
+PROTECTED = [Depends(require_api_token)]
+UNAUTHORIZED: dict[int | str, dict[str, object]] = {
+    status.HTTP_401_UNAUTHORIZED: {"description": "Missing or invalid API token"}
+}
 
 
 class HealthResponse(BaseModel):
@@ -123,6 +148,8 @@ class ChatResponse(BaseModel):
 
 class ConfirmRequest(BaseModel):
     draft_id: str = Field(min_length=1, max_length=64)
+    # Odoo user that pressed Confirm, sent by the Odoo chat; only its id is recorded.
+    confirmed_by_user_id: int | None = Field(default=None, gt=0, strict=True)
 
 
 class ConfirmResponse(BaseModel):
@@ -144,7 +171,11 @@ def health(gateway: Annotated[ERPGateway, Depends(get_erp_gateway)]) -> HealthRe
 
 @router.post(
     "/chat",
-    responses={status.HTTP_503_SERVICE_UNAVAILABLE: {"description": "The model failed"}},
+    dependencies=PROTECTED,
+    responses={
+        **UNAUTHORIZED,
+        status.HTTP_503_SERVICE_UNAVAILABLE: {"description": "The model failed"},
+    },
 )
 def chat(
     request: ChatRequest,
@@ -171,7 +202,9 @@ def chat(
 
 @router.post(
     "/confirm",
+    dependencies=PROTECTED,
     responses={
+        **UNAUTHORIZED,
         status.HTTP_404_NOT_FOUND: {"description": "Unknown, expired or already used draft"},
         status.HTTP_502_BAD_GATEWAY: {"description": "Odoo rejected the quotation"},
         status.HTTP_503_SERVICE_UNAVAILABLE: {"description": "Odoo is unreachable"},
@@ -183,7 +216,9 @@ def confirm(
     gateway: Annotated[ERPGateway, Depends(get_erp_gateway)],
 ) -> ConfirmResponse:
     try:
-        created = create_quotation(request.draft_id, drafts, gateway)
+        created = create_quotation(
+            request.draft_id, drafts, gateway, confirmed_by=request.confirmed_by_user_id
+        )
     except DraftNotFoundError as err:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

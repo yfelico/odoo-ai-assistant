@@ -72,11 +72,11 @@ Los borradores se guardan en memoria del proceso (un diccionario con caducidad, 
 | Endpoint | Entrada | Salida |
 | --- | --- | --- |
 | `POST /chat` | `{"message": str, "conversation_id": str \| null}` | `{"conversation_id": str, "answer": str, "pending_draft": {...} \| null, "tool_calls": [...]}` |
-| `POST /confirm` | `{"draft_id": str}` | `{"quotation_id": int, "name": str, "amount_untaxed": float, "amount_total": float}`; 404 si el borrador no existe, caducó o ya se confirmó; 502 si Odoo lo rechaza; 503 si Odoo no responde |
+| `POST /confirm` | `{"draft_id": str, "confirmed_by_user_id": int \| null}` | `{"quotation_id": int, "name": str, "amount_untaxed": float, "amount_total": float}`; 404 si el borrador no existe, caducó o ya se confirmó; 502 si Odoo lo rechaza; 503 si Odoo no responde |
 | `GET /health` | | `{"status": "ok", "odoo": "ok" \| "unreachable"}` |
 | `GET /` | | Chat web mínimo (HTML) |
 
-`tool_calls` en la respuesta lista las herramientas usadas con sus argumentos (`[{"name": str, "arguments": {...}}]`), para mostrar en la interfaz qué hizo el agente. El historial de cada `conversation_id` se guarda en memoria del proceso y caduca tras `CONVERSATION_TTL_SECONDS` sin actividad. Si el modelo falla, `POST /chat` responde 503. `pending_draft` es el último borrador preparado en el turno: `{"draft_id", "partner_id", "partner_name", "lines": [{"product_id", "product_name", "quantity", "price_unit", "subtotal"}], "estimated_total_untaxed"}`.
+`tool_calls` en la respuesta lista las herramientas usadas con sus argumentos (`[{"name": str, "arguments": {...}}]`), para mostrar en la interfaz qué hizo el agente. El historial de cada `conversation_id` se guarda en memoria del proceso y caduca tras `CONVERSATION_TTL_SECONDS` sin actividad. Si el modelo falla, `POST /chat` responde 503. Si `API_TOKEN` está definido, `POST /chat` y `POST /confirm` exigen la cabecera `Authorization: Bearer <API_TOKEN>` y responden 401 sin ella; `GET /health` sigue abierto para la monitorización, y la web de `GET /` pide el token cuando recibe un 401. `confirmed_by_user_id` es el id del usuario de Odoo que pulsó Confirmar (lo envía el módulo de Odoo); solo se registra el id. `pending_draft` es el último borrador preparado en el turno: `{"draft_id", "partner_id", "partner_name", "lines": [{"product_id", "product_name", "quantity", "price_unit", "subtotal"}], "estimated_total_untaxed"}`.
 
 ## 6. Seguridad y guardarraíles
 
@@ -84,7 +84,8 @@ Los borradores se guardan en memoria del proceso (un diccionario con caducidad, 
 - **Validación:** Pydantic valida cada llamada antes de tocar Odoo. Los argumentos inválidos vuelven al LLM como un error de herramienta legible, sin lanzar excepciones al usuario.
 - **Prompt injection:** los textos que vienen de Odoo (notas, descripciones, nombres) se pasan al modelo como datos dentro de etiquetas `<odoo_data>`. El system prompt indica que nunca siga instrucciones que aparezcan ahí.
 - **Límites del bucle:** `AGENT_MAX_ITERATIONS` (por defecto 6) y `AGENT_TIMEOUT_SECONDS` (por defecto 60).
-- **Auditoría:** cada llamada a una herramienta se registra en el logger `app.audit` (una línea JSON por evento) con conversación, herramienta, argumentos, resultado y duración, sin datos personales: los ids, números y booleanos se registran tal cual y los textos libres se sustituyen por su longitud. Cada confirmación registra el borrador, el cliente (id), el presupuesto creado y el resultado. El presupuesto creado lleva una nota interna en el chatter: "Creado por el asistente de IA tras confirmación del usuario"; para publicarla, el usuario técnico necesita un email (`ai-assistant@example.com`).
+- **Auditoría:** cada llamada a una herramienta se registra en el logger `app.audit` (una línea JSON por evento) con conversación, herramienta, argumentos, resultado y duración, sin datos personales: los ids, números y booleanos se registran tal cual y los textos libres se sustituyen por su longitud. Cada confirmación registra el borrador, el cliente (id), el presupuesto creado, el resultado y, si se conoce, el usuario de Odoo que confirmó (`confirmed_by_user_id`). El presupuesto creado lleva una nota interna en el chatter: "Creado por el asistente de IA tras confirmación del usuario", seguida de `#<id>` del usuario de Odoo cuando se conoce; para publicarla, el usuario técnico necesita un email (`ai-assistant@example.com`).
+- **Acceso a la API:** con `API_TOKEN` definido, solo quien tiene el token puede chatear o confirmar.
 - **Datos:** solo la base de demostración. Nunca datos reales en el repositorio, las pruebas ni las evals.
 
 ## 7. Calidad

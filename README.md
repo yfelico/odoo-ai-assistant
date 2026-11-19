@@ -15,10 +15,12 @@ curl http://localhost:8000/health
 
 `init_odoo.sh` writes `ODOO_API_KEY` into `.env`. Running it again rotates the key.
 
-Open http://localhost:8000/ to chat with the assistant, or call the API directly:
+Open http://localhost:8000/ to chat with the assistant (it asks for `API_TOKEN` once per tab when the API has one), or call the API directly:
 
 ```bash
-curl -X POST http://localhost:8000/chat -H "Content-Type: application/json"   -d '{"message": "¿Qué productos están por debajo del stock mínimo?"}'
+curl -X POST http://localhost:8000/chat -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $API_TOKEN" \
+  -d '{"message": "¿Qué productos están por debajo del stock mínimo?"}'
 ```
 
 Ask for a quotation ("Crea un presupuesto para Azure Interior con 10 Office Chair") and the assistant prepares a draft without touching Odoo; the page shows it with a **Confirm** button, which calls `POST /confirm` to create the quotation.

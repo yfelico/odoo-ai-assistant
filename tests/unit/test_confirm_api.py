@@ -1,4 +1,5 @@
 import json
+import logging
 from collections.abc import Iterator
 from datetime import date
 
@@ -7,9 +8,11 @@ from fastapi.testclient import TestClient
 
 from app.adapters.fake_erp import FakeERP
 from app.adapters.fake_llm import FakeLLM
+from app.agent.audit import AUDIT_LOGGER
 from app.agent.conversations import ConversationStore
 from app.agent.drafts import DraftStore
 from app.agent.loop import Agent
+from app.agent.tools import QUOTATION_NOTE
 from app.api.routes import get_agent, get_conversation_store, get_draft_store, get_erp_gateway
 from app.domain.models import (
     ChatMessage,
@@ -201,3 +204,30 @@ def test_odoo_rejection_is_bad_gateway(
 
     assert response.status_code == 502
     assert erp.created_quotations == []
+
+
+def test_confirm_records_the_odoo_user_who_confirmed(
+    client: TestClient, erp: FlakyERP, drafts: DraftStore, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.INFO, logger=AUDIT_LOGGER)
+
+    response = client.post(
+        "/confirm", json={"draft_id": _draft_id(drafts), "confirmed_by_user_id": 7}
+    )
+
+    assert response.status_code == 200
+    [created] = erp.created_quotations
+    assert created.note == f"{QUOTATION_NOTE} #7"
+    [event] = [json.loads(r.getMessage()) for r in caplog.records if r.name == AUDIT_LOGGER]
+    assert event["confirmed_by_user_id"] == 7
+
+
+@pytest.mark.parametrize("user_id", [0, -1, "admin"])
+def test_confirm_rejects_invalid_user_ids(
+    client: TestClient, drafts: DraftStore, user_id: object
+) -> None:
+    response = client.post(
+        "/confirm", json={"draft_id": _draft_id(drafts), "confirmed_by_user_id": user_id}
+    )
+
+    assert response.status_code == 422

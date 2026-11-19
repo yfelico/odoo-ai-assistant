@@ -27,3 +27,6 @@ class Settings(BaseSettings):
     agent_timeout_seconds: float = Field(default=60.0, gt=0)
     conversation_ttl_seconds: float = Field(default=3600.0, gt=0)
     draft_ttl_seconds: float = Field(default=900.0, gt=0)
+
+    # When set, POST /chat and /confirm require "Authorization: Bearer <token>".
+    api_token: SecretStr | None = None

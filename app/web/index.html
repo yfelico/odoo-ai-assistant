@@ -89,6 +89,12 @@
 <body>
   <main>
     <h1>Asistente de IA para Odoo</h1>
+    <!-- Shown when the API answers 401: it was started with API_TOKEN. -->
+    <form id="token-form" hidden>
+      <label for="token">Esta API está protegida. Token (API_TOKEN):</label>
+      <input id="token" type="password" autocomplete="off" required>
+      <button type="submit">Guardar</button>
+    </form>
     <div id="log" aria-live="polite"></div>
     <form id="chat-form">
       <label for="message" hidden>Mensaje</label>
@@ -103,7 +109,35 @@
     const form = document.getElementById("chat-form");
     const input = document.getElementById("message");
     const send = document.getElementById("send");
+    const tokenForm = document.getElementById("token-form");
+    const tokenInput = document.getElementById("token");
     let conversationId = null;
+
+    // The token lives only in this tab (sessionStorage), which may be unavailable.
+    function storedToken() {
+      try { return sessionStorage.getItem("apiToken") || ""; } catch { return ""; }
+    }
+
+    function headers() {
+      const token = storedToken();
+      return token
+        ? { "Content-Type": "application/json", "Authorization": "Bearer " + token }
+        : { "Content-Type": "application/json" };
+    }
+
+    function requireToken() {
+      tokenForm.hidden = false;
+      tokenInput.focus();
+      return "La API pide un token: introdúcelo arriba y vuelve a intentarlo.";
+    }
+
+    tokenForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      try { sessionStorage.setItem("apiToken", tokenInput.value.trim()); } catch { /* not persisted */ }
+      tokenInput.value = "";
+      tokenForm.hidden = true;
+      input.focus();
+    });
 
     // textContent only: answers and tool arguments are never rendered as HTML.
     function addMessage(text, kind, toolCalls) {
@@ -176,9 +210,14 @@
       try {
         const response = await fetch("/confirm", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: headers(),
           body: JSON.stringify({ draft_id: draftId }),
         });
+        if (response.status === 401) {
+          addMessage(requireToken(), "error");
+          button.disabled = false;
+          return;
+        }
         const body = await response.json();
         if (response.ok) {
           button.textContent = "Creado";
@@ -199,9 +238,10 @@
     async function ask(message) {
       const response = await fetch("/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: headers(),
         body: JSON.stringify({ message: message, conversation_id: conversationId }),
       });
+      if (response.status === 401) throw new Error(requireToken());
       const body = await response.json();
       if (!response.ok) {
         throw new Error(typeof body.detail === "string" ? body.detail : "Error " + response.status);
