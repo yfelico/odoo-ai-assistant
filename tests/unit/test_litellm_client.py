@@ -265,3 +265,19 @@ def test_reply_without_usage_reports_none() -> None:
 def test_litellm_price_uses_the_public_price_list() -> None:
     assert litellm_price("gemini/gemini-3.5-flash-lite", 1_000_000, 0) == pytest.approx(0.30)
     assert litellm_price("gemini/not-a-real-model", 1000, 100) is None
+
+
+def test_transient_errors_are_retried_and_then_become_llm_errors() -> None:
+    # Real LiteLLM retry machinery, with a scripted provider failure instead of the network.
+    def failing_completion(**kwargs: object) -> object:
+        return litellm.completion(
+            **kwargs,
+            mock_response=litellm.InternalServerError(
+                message="overloaded", llm_provider="gemini", model=MODEL
+            ),
+        )
+
+    client = LiteLLMClient(MODEL, num_retries=1, completion=failing_completion)
+
+    with pytest.raises(LLMError):
+        client.complete([ChatMessage(role="user", content="hola")], [], 5.0)
