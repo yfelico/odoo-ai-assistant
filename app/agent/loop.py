@@ -11,7 +11,7 @@ from app.agent import audit
 from app.agent.drafts import DEFAULT_DRAFT_TTL_SECONDS, DraftStore
 from app.agent.prompts import system_prompt
 from app.agent.tools import AGENT_TOOLS, Tool, ToolContext, run_tool, tool_specs
-from app.domain.models import ChatMessage, QuotationDraft, ToolCall
+from app.domain.models import UNKNOWN_USAGE, ChatMessage, QuotationDraft, ToolCall, Usage
 from app.domain.ports import ERPGateway, LLMClient
 
 logger = logging.getLogger(__name__)
@@ -38,6 +38,8 @@ class AgentTurn:
     messages: tuple[ChatMessage, ...]
     # Last quotation draft prepared in this turn, waiting for the user's confirmation.
     pending_draft: QuotationDraft | None = None
+    # Tokens and estimated cost of every model call in the turn.
+    usage: Usage = Usage()
 
 
 @dataclass(slots=True)
@@ -45,9 +47,12 @@ class _Progress:
     conversation: list[ChatMessage]
     calls: list[ToolCall] = field(default_factory=list)
     draft: QuotationDraft | None = None
+    usage: Usage = field(default_factory=Usage)
 
     def finish(self, answer: str, reason: StopReason) -> AgentTurn:
-        return AgentTurn(answer, reason, tuple(self.calls), tuple(self.conversation), self.draft)
+        return AgentTurn(
+            answer, reason, tuple(self.calls), tuple(self.conversation), self.draft, self.usage
+        )
 
 
 def _utc_today() -> date:
@@ -92,11 +97,26 @@ class Agent:
         system = ChatMessage(role="system", content=system_prompt(today))
         progress = _Progress(conversation=[*history, ChatMessage(role="user", content=message)])
 
+        turn = self._loop(system, context, progress, deadline)
+        logger.info(
+            "Agent turn: conversation_id=%s stop=%s input_tokens=%d output_tokens=%d cost_usd=%s",
+            conversation_id,
+            turn.stop_reason,
+            turn.usage.input_tokens,
+            turn.usage.output_tokens,
+            turn.usage.cost_usd,
+        )
+        return turn
+
+    def _loop(
+        self, system: ChatMessage, context: ToolContext, progress: _Progress, deadline: float
+    ) -> AgentTurn:
         for _ in range(self._max_iterations):
             remaining = deadline - self._clock()
             if remaining <= 0:
                 return self._stop("timeout", progress)
             reply = self._llm.complete([system, *progress.conversation], self._specs, remaining)
+            progress.usage += reply.usage or UNKNOWN_USAGE
             progress.conversation.append(reply)
             if not reply.tool_calls:
                 return progress.finish(reply.content, "answered")

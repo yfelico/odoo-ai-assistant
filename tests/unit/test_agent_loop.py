@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import date
 
 import pytest
@@ -8,7 +9,7 @@ from app.adapters.fake_llm import FakeLLM
 from app.agent.drafts import DraftStore
 from app.agent.loop import Agent
 from app.agent.tools import AGENT_TOOLS
-from app.domain.models import ChatMessage, Partner, Product, ToolCall
+from app.domain.models import ChatMessage, Partner, Product, ToolCall, Usage
 
 TODAY = date(2026, 11, 18)
 TIMEOUT = 60.0
@@ -216,3 +217,49 @@ def test_system_prompt_requires_user_confirmation_for_quotations() -> None:
     assert "prepare_quotation" in system
     assert "Confirm" in system
     assert "do not write buttons" in system
+
+
+def test_adds_up_the_usage_of_every_model_call_in_the_turn() -> None:
+    call = _call("c1", "search_partners", name="acme")
+    llm = FakeLLM(
+        [
+            ChatMessage(role="assistant", tool_calls=(call,), usage=Usage(100, 10, 0.001)),
+            ChatMessage(role="assistant", content="ok", usage=Usage(200, 20, 0.002)),
+        ]
+    )
+
+    turn = _agent(llm).run(history=(), message="hola")
+
+    assert (turn.usage.input_tokens, turn.usage.output_tokens) == (300, 30)
+    assert turn.usage.cost_usd == pytest.approx(0.003)
+
+
+def test_turn_cost_is_unknown_when_a_call_has_no_price() -> None:
+    call = _call("c1", "search_partners", name="acme")
+    llm = FakeLLM(
+        [
+            ChatMessage(role="assistant", tool_calls=(call,), usage=Usage(100, 10, None)),
+            ChatMessage(role="assistant", content="ok"),
+        ]
+    )
+
+    turn = _agent(llm).run(history=(), message="hola")
+
+    assert turn.usage == Usage(input_tokens=100, output_tokens=10, cost_usd=None)
+
+
+def test_logs_the_usage_of_the_turn_without_the_conversation_text(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.INFO, logger="app.agent.loop")
+    llm = FakeLLM([ChatMessage(role="assistant", content="Hola", usage=Usage(100, 10, 0.001))])
+
+    _agent(llm).run(history=(), message="Precio para Acme Corp", conversation_id="conv-3")
+
+    [record] = [r for r in caplog.records if r.name == "app.agent.loop"]
+    message = record.getMessage()
+    assert "conv-3" in message
+    assert "input_tokens=100" in message
+    assert "output_tokens=10" in message
+    assert "cost_usd=0.001" in message
+    assert "Acme" not in message

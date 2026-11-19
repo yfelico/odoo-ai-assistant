@@ -4,9 +4,9 @@ import litellm
 import pytest
 from pydantic import SecretStr
 
-from app.adapters.litellm_client import LiteLLMClient
+from app.adapters.litellm_client import LiteLLMClient, litellm_price
 from app.config import Settings
-from app.domain.models import ChatMessage, LLMError, ToolCall, ToolSpec
+from app.domain.models import ChatMessage, LLMError, ToolCall, ToolSpec, Usage
 
 MODEL = "gemini/test-model"
 SPEC = ToolSpec(
@@ -207,3 +207,61 @@ def test_from_settings_uses_model_key_and_effort() -> None:
         "medium",
         2,
     )
+
+
+class FakePricing:
+    def __init__(self, cost: float | None) -> None:
+        self.cost = cost
+        self.calls: list[tuple[str, int, int]] = []
+
+    def __call__(self, model: str, input_tokens: int, output_tokens: int) -> float | None:
+        self.calls.append((model, input_tokens, output_tokens))
+        return self.cost
+
+
+def _response_with_usage(input_tokens: int, output_tokens: int) -> dict[str, object]:
+    return {
+        **_response({"role": "assistant", "content": "Hola"}),
+        "usage": {
+            "prompt_tokens": input_tokens,
+            "completion_tokens": output_tokens,
+            "total_tokens": input_tokens + output_tokens,
+        },
+    }
+
+
+def test_reports_token_usage_and_estimated_cost() -> None:
+    completion = FakeCompletion(_response_with_usage(1000, 100))
+    pricing = FakePricing(0.0005)
+
+    reply = _client(completion, pricing=pricing).complete(
+        [ChatMessage(role="user", content="hola")], [], 5.0
+    )
+
+    assert reply.usage == Usage(input_tokens=1000, output_tokens=100, cost_usd=0.0005)
+    assert pricing.calls == [(MODEL, 1000, 100)]
+
+
+def test_unknown_price_leaves_the_cost_empty() -> None:
+    completion = FakeCompletion(_response_with_usage(1000, 100))
+
+    reply = _client(completion, pricing=FakePricing(None)).complete(
+        [ChatMessage(role="user", content="hola")], [], 5.0
+    )
+
+    assert reply.usage == Usage(input_tokens=1000, output_tokens=100, cost_usd=None)
+
+
+def test_reply_without_usage_reports_none() -> None:
+    completion = FakeCompletion(_response({"role": "assistant", "content": "Hola"}))
+
+    reply = _client(completion, pricing=FakePricing(1.0)).complete(
+        [ChatMessage(role="user", content="hola")], [], 5.0
+    )
+
+    assert reply.usage is None
+
+
+def test_litellm_price_uses_the_public_price_list() -> None:
+    assert litellm_price("gemini/gemini-3.5-flash-lite", 1_000_000, 0) == pytest.approx(0.30)
+    assert litellm_price("gemini/not-a-real-model", 1000, 100) is None

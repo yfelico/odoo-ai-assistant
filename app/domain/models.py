@@ -138,6 +138,28 @@ class ToolSpec:
 
 
 @dataclass(frozen=True, slots=True)
+class Usage:
+    """Tokens and estimated cost in USD of model calls; the cost is None if a price is unknown."""
+
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cost_usd: float | None = 0.0
+
+    def __add__(self, other: "Usage") -> "Usage":
+        cost = (
+            None
+            if self.cost_usd is None or other.cost_usd is None
+            else self.cost_usd + other.cost_usd
+        )
+        return Usage(
+            self.input_tokens + other.input_tokens, self.output_tokens + other.output_tokens, cost
+        )
+
+
+UNKNOWN_USAGE = Usage(cost_usd=None)
+
+
+@dataclass(frozen=True, slots=True)
 class ChatMessage:
     role: Role
     content: str = ""
@@ -146,6 +168,8 @@ class ChatMessage:
     tool_name: str | None = None
     # Opaque provider message (e.g. reasoning signatures) that must be sent back unchanged.
     provider_payload: Mapping[str, object] | None = None
+    # Only on replies from the model, when the provider reports it.
+    usage: Usage | None = None
 
 
 class ERPError(Exception):

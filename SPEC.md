@@ -98,6 +98,8 @@ Los borradores se guardan en memoria del proceso (un diccionario con caducidad, 
 
 En CI (GitHub Actions, en cada push): `ruff check`, `ruff format --check`, `mypy app` y `pytest -m "not integration and not evals"`.
 
+Cada respuesta del modelo trae su uso (tokens de entrada y salida, y costo estimado con la lista de precios pública de LiteLLM, vacío si el modelo no tiene precio). El agente suma el uso del turno y lo registra en el log, sin texto de la conversación.
+
 ## 8. Estructura del repositorio
 
 ```text

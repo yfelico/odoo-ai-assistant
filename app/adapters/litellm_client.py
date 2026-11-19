@@ -2,6 +2,7 @@
 
 import logging
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import replace
 from typing import Literal, Self, cast
 
 import litellm
@@ -9,11 +10,13 @@ import openai
 from pydantic import BaseModel
 
 from app.config import Settings
-from app.domain.models import ChatMessage, LLMError, ToolCall, ToolSpec
+from app.domain.models import ChatMessage, LLMError, ToolCall, ToolSpec, Usage
 
 logger = logging.getLogger(__name__)
 
 type Completion = Callable[..., object]
+# (model, input tokens, output tokens) -> estimated cost in USD, or None if unknown.
+type Pricing = Callable[[str, int, int], float | None]
 type WireMessage = dict[str, object]
 
 ROLE = "role"
@@ -23,7 +26,8 @@ FUNCTION = "function"
 
 
 class LiteLLMClient:
-    def __init__(
+    # Provider calls and prices are injected so tests run without network.
+    def __init__(  # noqa: PLR0913
         self,
         model: str,
         *,
@@ -31,12 +35,14 @@ class LiteLLMClient:
         reasoning_effort: Literal["low", "medium", "high"] | None = None,
         num_retries: int = 0,
         completion: Completion = litellm.completion,
+        pricing: Pricing | None = None,
     ) -> None:
         self._model = model
         self._api_key = api_key
         self._reasoning_effort = reasoning_effort
         self._num_retries = num_retries
         self._completion = completion
+        self._pricing = pricing or litellm_price
 
     @classmethod
     def from_settings(cls, settings: Settings, completion: Completion | None = None) -> Self:
@@ -71,7 +77,33 @@ class LiteLLMClient:
             # LiteLLM raises OpenAI-compatible exceptions for every provider.
             logger.warning("LLM request failed: %s", type(err).__name__)
             raise LLMError(f"The model provider failed ({type(err).__name__})") from err
-        return _from_wire(_first_message(response))
+        data = response.model_dump() if isinstance(response, BaseModel) else response
+        reply = _from_wire(_first_message(data))
+        return replace(reply, usage=self._usage(data))
+
+    def _usage(self, data: object) -> Usage | None:
+        raw = data.get("usage") if isinstance(data, Mapping) else None
+        if not isinstance(raw, Mapping):
+            return None
+        input_tokens = _int(raw.get("prompt_tokens"))
+        output_tokens = _int(raw.get("completion_tokens"))
+        cost = self._pricing(self._model, input_tokens, output_tokens)
+        return Usage(input_tokens, output_tokens, cost)
+
+
+def litellm_price(model: str, input_tokens: int, output_tokens: int) -> float | None:
+    """Estimated cost from LiteLLM's public price list; None for models it does not know."""
+    try:
+        input_cost, output_cost = litellm.cost_per_token(
+            model=model, prompt_tokens=input_tokens, completion_tokens=output_tokens
+        )
+    except litellm.exceptions.ModelNotMappedError:
+        return None
+    return input_cost + output_cost
+
+
+def _int(value: object) -> int:
+    return value if isinstance(value, int) else 0
 
 
 def _to_wire(message: ChatMessage) -> WireMessage:
@@ -116,8 +148,7 @@ def _tool_to_wire(tool: ToolSpec) -> WireMessage:
     }
 
 
-def _first_message(response: object) -> WireMessage:
-    data = response.model_dump() if isinstance(response, BaseModel) else response
+def _first_message(data: object) -> WireMessage:
     try:
         message = cast(Mapping[str, object], data)["choices"]
         return dict(cast(Sequence[Mapping[str, Mapping[str, object]]], message)[0]["message"])
