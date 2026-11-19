@@ -94,9 +94,9 @@ Los borradores se guardan en memoria del proceso (un diccionario con caducidad, 
 | Unitarias | Dominio, validación de herramientas y flujo de confirmación en dos pasos | `FakeERP` en memoria, TDD |
 | Bucle del agente | Herramienta correcta, límite de iteraciones y manejo de errores | `FakeLLM` con respuestas guionadas |
 | Integración | Que el adaptador XML-RPC traduzca bien los datos reales | Odoo en Docker, `pytest -m integration` |
-| Evals | Corrección de punta a punta | `tests/evals/cases.yaml`: pregunta, herramientas esperadas y respuesta esperada. `pytest -m evals` genera un informe con el porcentaje de aciertos, la latencia y el costo por modelo |
+| Evals | Corrección de punta a punta | `tests/evals/cases.yaml`: pregunta, herramientas esperadas y prohibidas, y respuesta esperada. Las cifras no se escriben a mano: cada expectativa nombra un *hecho* que se calcula en vivo desde Odoo, porque los datos demo dependen de la fecha de instalación. La corrección es determinista (sin LLM como juez) y todo caso comprueba además que no se creó ningún pedido. `pytest -m evals` compara los modelos de `EVAL_MODELS` (por defecto `LLM_MODEL`), respeta la cuota con `EVAL_REQUESTS_PER_MINUTE` y genera en `tests/evals/reports/` (sin versionar) un informe con el porcentaje de aciertos (total y por categoría), la latencia media y p95, los tokens y el costo estimado por modelo. El informe de referencia se versiona en `docs/evals-report.md` |
 
-En CI (GitHub Actions, en cada push): `ruff check`, `ruff format --check`, `mypy app` y `pytest -m "not integration and not evals"`.
+En CI (GitHub Actions, en cada push y pull request; `.github/workflows/ci.yml`): `ruff check`, `ruff format --check`, `mypy app` y `pytest -m "not integration and not evals"`.
 
 Cada respuesta del modelo trae su uso (tokens de entrada y salida, y costo estimado con la lista de precios pública de LiteLLM, vacío si el modelo no tiene precio). El agente suma el uso del turno y lo registra en el log, sin texto de la conversación.
 
@@ -118,6 +118,7 @@ odoo-ai-assistant/
 │   ├── adapters/
 │   │   ├── odoo_xmlrpc.py
 │   │   ├── litellm_client.py
+│   │   ├── rate_limited_llm.py  # limita peticiones por minuto (cuotas de los planes gratuitos)
 │   │   ├── fake_erp.py
 │   │   └── fake_llm.py      # respuestas guionadas para pruebas
 │   ├── api/routes.py
@@ -136,6 +137,15 @@ odoo-ai-assistant/
 │   ├── odoo_rpc.py          # XML-RPC directo para inspeccionar y limpiar Odoo en pruebas
 │   ├── integration/
 │   └── evals/
+│       ├── cases.yaml       # catálogo de casos
+│       ├── cases.py         # esquema y carga del catálogo
+│       ├── facts.py         # valores esperados, calculados en vivo desde Odoo
+│       ├── checks.py        # corrección determinista de cada respuesta
+│       ├── runner.py        # ejecuta un caso contra el agente real
+│       └── report.py        # informe comparativo por modelo
+├── docs/
+│   └── evals-report.md      # informe de evals de referencia
+├── .github/workflows/ci.yml
 ├── Dockerfile               # imagen de la API
 ├── docker-compose.yml
 ├── pyproject.toml

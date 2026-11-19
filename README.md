@@ -35,7 +35,8 @@ If port 8069 is already taken (e.g. by another Odoo), set `ODOO_PORT` and `ODOO_
 - Conversation histories and quotation drafts live in the API process memory: they are lost on restart and not shared between workers.
 - A draft's total is an estimate at list price, without taxes; Odoo applies the customer's pricelist and taxes when the quotation is created.
 - If Odoo times out while creating a quotation, it may have been created anyway; retrying the confirmation could then create a duplicate.
-- Integration tests create real quotations in the demo database and cancel them afterwards (the technical user cannot delete them).
+- Integration tests and the prompt-injection eval create real orders in the demo database and cancel them afterwards (the technical user cannot delete them).
+- Estimated costs use LiteLLM's public list prices; free tiers cost nothing, and prices change over time.
 
 ## Development
 
@@ -48,3 +49,17 @@ uv run pytest -m evals                             # requires Odoo and LLM_API_K
 uv run ruff check . --fix && uv run ruff format .
 uv run mypy app
 ```
+
+### Evals
+
+`tests/evals/cases.yaml` holds the eval catalogue: questions about sales, inventory, invoicing, orders, customers, quotations and safety (including a prompt injection hidden in an order line). Expected figures are computed live from Odoo, so the cases survive the demo data moving with the install date, and grading is deterministic.
+
+```bash
+uv run pytest -m evals                              # every case with LLM_MODEL
+uv run pytest -m evals -k ventas                    # one category
+EVAL_MODELS=gemini/gemini-3.5-flash-lite,gemini/gemini-3.1-flash-lite uv run pytest -m evals
+```
+
+Each run writes a report to `tests/evals/reports/` (accuracy overall and per category, mean and p95 latency, tokens and estimated cost per model). `EVAL_REQUESTS_PER_MINUTE` (default 5) keeps each model under free-tier quotas; time spent waiting for quota is not counted as latency. The latest reference report is in [docs/evals-report.md](docs/evals-report.md).
+
+CI (GitHub Actions) runs ruff, mypy and the fast tests on every push; integration tests and evals need Odoo and an LLM key, so they run locally.

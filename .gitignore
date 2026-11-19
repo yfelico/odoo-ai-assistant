@@ -11,3 +11,6 @@ htmlcov/
 dist/
 build/
 *.egg-info/
+
+# Eval reports (a curated one is kept in docs/evals-report.md).
+tests/evals/reports/
